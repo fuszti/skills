@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Run build.py with its dependencies:  bash explainer <project> [--keys] [--dry] [--check] [--site] [N...]
+exec uv run -q --no-project --python 3.12 --with imageio-ffmpeg --with pillow --with pygments \
+  --with kokoro --with soundfile \
+  --with "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" \
+  --with "preshed==3.0.13" \
+  python "$(cd "$(dirname "$0")" && pwd)/build.py" "$@"

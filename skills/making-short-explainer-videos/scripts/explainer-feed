@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Serve the local feed with voice follow-ups:  bash explainer-feed <project> [--session <id>] [--port 8765] [--no-open]
+# Voice input (mlx-whisper) needs Apple Silicon.
+exec uv run -q --no-project --python 3.12 --with mlx-whisper --with imageio-ffmpeg --with soundfile --with numpy \
+  python "$(cd "$(dirname "$0")" && pwd)/serve.py" "$@"

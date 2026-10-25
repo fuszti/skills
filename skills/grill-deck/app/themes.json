@@ -1,0 +1,48 @@
+{
+  "defaults": { "theme": "midnight", "accent": "violet", "radius": "round", "density": "comfortable", "font": "inter" },
+  "themes": {
+    "midnight": {
+      "mode": "dark",
+      "vars": {
+        "--bg": "#0B0E14", "--dot": "rgba(255,255,255,.045)", "--panel": "#121722", "--panel-2": "#19202E",
+        "--line": "#242C3B", "--ctl": "#5C6880", "--text": "#E8ECF4", "--muted": "#A0AABB",
+        "--ok": "#4ADE9B", "--ok-soft": "rgba(74,222,155,.12)", "--warn": "#F5B454", "--warn-soft": "rgba(245,180,84,.13)",
+        "--bad": "#F87171", "--bad-soft": "rgba(248,113,113,.13)",
+        "--k-web": "#60A5FA", "--k-code": "#A78BFA", "--k-probe": "#F5B454", "--k-visual": "#F472B6",
+        "--shadow": "0 1px 0 rgba(255,255,255,.03) inset, 0 10px 30px rgba(0,0,0,.35)", "--glass": "rgba(18,23,34,.78)"
+      }
+    },
+    "daylight": {
+      "mode": "light",
+      "vars": {
+        "--bg": "#F3F4F8", "--dot": "rgba(20,22,28,.06)", "--panel": "#FFFFFF", "--panel-2": "#F6F7FA",
+        "--line": "#E2E5EC", "--ctl": "#868E9C", "--text": "#14161C", "--muted": "#555D6C",
+        "--ok": "#147A49", "--ok-soft": "#E5F4EC", "--warn": "#9A5606", "--warn-soft": "#FCF0DF",
+        "--bad": "#B42318", "--bad-soft": "#FDECEA",
+        "--k-web": "#2563EB", "--k-code": "#7C3AED", "--k-probe": "#B45309", "--k-visual": "#BE185D",
+        "--shadow": "0 1px 2px rgba(20,22,28,.05), 0 8px 24px rgba(20,22,28,.06)", "--glass": "rgba(255,255,255,.82)"
+      }
+    }
+  },
+  "accents": {
+    "violet": { "dark": { "accent": "#8B7CFF", "on": "#0B0E14" }, "light": { "accent": "#5B4BE0", "on": "#FFFFFF" } },
+    "blue":   { "dark": { "accent": "#5B9BFF", "on": "#0B0E14" }, "light": { "accent": "#2457D6", "on": "#FFFFFF" } },
+    "teal":   { "dark": { "accent": "#2DD4BF", "on": "#0B0E14" }, "light": { "accent": "#0F766E", "on": "#FFFFFF" } },
+    "rose":   { "dark": { "accent": "#FB7185", "on": "#0B0E14" }, "light": { "accent": "#BE123C", "on": "#FFFFFF" } },
+    "amber":  { "dark": { "accent": "#F5B454", "on": "#0B0E14" }, "light": { "accent": "#A15C07", "on": "#FFFFFF" } }
+  },
+  "radii": {
+    "sharp": { "--r-lg": "6px", "--r-md": "4px", "--r-sm": "3px" },
+    "soft":  { "--r-lg": "12px", "--r-md": "9px", "--r-sm": "7px" },
+    "round": { "--r-lg": "18px", "--r-md": "13px", "--r-sm": "10px" }
+  },
+  "densities": {
+    "comfortable": { "--gap": "16px", "--pad": "16px", "--row": "12px" },
+    "compact":     { "--gap": "10px", "--pad": "12px", "--row": "8px" }
+  },
+  "fonts": {
+    "inter": "Inter, system-ui, sans-serif",
+    "geist": "Geist, system-ui, sans-serif",
+    "plex": "'IBM Plex Sans', system-ui, sans-serif"
+  }
+}

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grill deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <button type="button" id="side-toggle" class="side-toggle" aria-controls="left-panel" aria-expanded="true" aria-label="Hide the left panel" title="Hide the left panel (B)">
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path class="side-fill" d="M5 8h2M5 11h2M5 14h2"/></svg>
+    </button>
+    <div class="title"><span id="title">Grill deck</span><span id="round" class="sub"></span></div>
+    <div class="voice">
+      <button type="button" id="mic" class="mic off" aria-pressed="false" aria-label="Microphone off" title="Microphone off (M)">
+        <svg class="i-on" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        <svg class="i-off" aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M3 3l18 18"/></svg>
+      </button>
+      <div id="heard" class="heard" aria-live="polite"></div>
+      <div id="judge" class="judge" role="status"></div>
+    </div>
+    <button type="button" id="send" class="btn-primary send" aria-label="Send what you said now" title="Send what you said now, even if Haiku thinks you are not done (Ctrl+Enter)">
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      <span id="send-count" class="send-count" aria-hidden="true">0</span>
+    </button>
+  </header>
+
+  <div class="cols">
+    <aside class="left" id="left-panel" aria-label="Decisions, processes and session" tabindex="0">
+      <section class="panel sec" data-sec="settled">
+        <h2><button type="button" class="sec-toggle" aria-expanded="false"><span class="eyebrow">Settled</span><span id="settled-count" class="chip ok">0</span><svg class="chev" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></h2>
+        <div class="sec-body" id="ledger"></div>
+        <div class="vgrip" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize the Settled list" data-target="#ledger" data-key="settled"></div>
+      </section>
+      <section class="panel sec" data-sec="running">
+        <h2><button type="button" class="sec-toggle" aria-expanded="true"><span class="eyebrow">Running</span><span id="run-count" class="chip warn">0</span><span id="done-count" class="chip ok">0 done</span><svg class="chev" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></h2>
+        <div class="sec-body" id="procs"></div>
+        <div class="vgrip" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize the Running list" data-target="#procs" data-key="running"></div>
+      </section>
+      <section class="panel sec" data-sec="chat" aria-label="Claude session">
+        <h2><button type="button" class="sec-toggle" aria-expanded="true"><span class="eyebrow">Claude session</span><span id="chat-state" class="chip">offline</span><svg class="chev" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button></h2>
+        <div class="sec-body chat">
+          <div id="chatlog" class="chatlog divider" role="log" aria-live="polite" tabindex="0" aria-label="Messages from the session"></div>
+          <div class="vgrip" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize the message log" data-target="#chatlog" data-key="chat"></div>
+          <label for="chat-input" class="eyebrow small">Message to the session</label>
+          <div class="chat-row">
+            <textarea id="chat-input" class="field" rows="2" placeholder="Type to Claude · Enter sends, Shift+Enter new line"></textarea>
+            <button type="button" id="chat-send" class="btn-primary icon" aria-label="Send message"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          </div>
+        </div>
+      </section>
+    </aside>
+    <div class="splitter" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize the left panel" data-side="left"></div>
+
+    <main class="panel middle">
+      <div class="vbar"><div id="vhead" class="vhead"></div><div id="tabs" class="tabs" role="group" aria-label="Visuals of this question"></div></div>
+      <div id="stage" class="stage"></div>
+    </main>
+    <div class="splitter" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize the questions panel" data-side="right"></div>
+
+    <section class="right" aria-label="Questions">
+      <h2 class="eyebrow qhead">Questions <span id="round-chip" class="chip acc"></span><span id="open-chip" class="chip"></span></h2>
+      <div id="qcol" class="qcol" tabindex="0" aria-label="Question list"><div class="spacer" aria-hidden="true"></div></div>
+    </section>
+  </div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

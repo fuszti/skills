@@ -1,0 +1,12 @@
+{
+  "name": "fuszti-skills",
+  "description": "Explainer video threads and grill-deck for Claude Code",
+  "owner": { "name": "Fuszti" },
+  "plugins": [
+    {
+      "name": "fuszti-skills",
+      "source": ".",
+      "description": "Explainer video threads (/shorts) and grill-deck"
+    }
+  ]
+}
