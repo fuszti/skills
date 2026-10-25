@@ -19,6 +19,9 @@ Read the `## Traces` section of `docs/agents/observability.md`. It gives:
 | Attributes | the names of run id, model, input tokens, output tokens |
 | Count tokens only on | the one span name that carries each model call once |
 
+When `docs/agents/recipes/trace.sh` exists, fetch with it: `trace.sh <trace-id>` or
+`trace.sh --run <run-id> <from> <to>`. Its output goes straight into `spans.py`.
+
 If the file or the section is missing, tell the user once: "Run `/setup-fuszti-skills` to record this repo's
 traces." Then ask for a trace export (OTLP JSON or Jaeger JSON), and continue with it.
 

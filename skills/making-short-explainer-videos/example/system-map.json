@@ -1,0 +1,9 @@
+{
+  "nodes": {
+    "page": {"x": 80, "y": 310, "w": 260, "h": 120, "title": "Browser", "sub": "Shop page", "icon": "screen", "color": "amber"},
+    "api": {"x": 620, "y": 310, "w": 300, "h": 120, "title": "Order API", "sub": "checkout", "icon": "lambda", "color": "purple"},
+    "wk": {"x": 1160, "y": 310, "w": 300, "h": 120, "title": "Worker", "sub": "fulfilment", "icon": "lambda", "color": "purple"},
+    "db": {"x": 1160, "y": 620, "w": 300, "h": 120, "title": "Postgres", "sub": "orders", "icon": "db", "color": "green"}
+  },
+  "routes": {}
+}

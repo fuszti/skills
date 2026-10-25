@@ -33,6 +33,7 @@ An element appears with a 0.28 s fade + rise and disappears 0.2 s before its `t1
 | Element | Use |
 |---|---|
 | `SystemMap(nodes, routes=None)` | the series' one map: `nodes = {key: (x, y, w, h, title, sub, icon, color)}`; `routes = {(a, b): [(x, y), …]}` bends an edge around a box |
+| `SystemMap.load(path)` | the repo's own map from `docs/agents/system-map.json` (format: `example/system-map.json`) |
 | `map.show(t0, keys=None, step=0.12)` | the node boxes (all, or `keys`), one after another |
 | `map.edge(t0, a, b, label=None, color=LINE, dashed=False, shift=0)` | an edge from a's side that faces b; `shift` (px) separates a request from its reply |
 | `map.focus(t0, keep)` | dim every node that is not in `keep` |
@@ -73,6 +74,8 @@ with_shots("confirm", m, [
 - `[a]`: a marker (letters/digits). `s` and `end` are reserved: `m["s"]` is the scene start, `m["end"]` the scene end.
 - `{nginx|engine x}`: the caption shows the left side, the voice says the right side. Spell out what TTS
   mispronounces: "I Ds", "S Q L", "D B", numbers as words when the caption should not show digits.
+- **Lexicon:** `SERIES["lexicon"] = "<abs path>/lexicon.json"` (`{"term": "spoken"}`, else `<project>/lexicon.json`).
+  The build writes `{term|spoken}` for every whole-word, case-sensitive match outside markers and markup.
 - "Pause and guess.": the feed stops the video just after these words, before the scene fades. A marker whose name
   starts with `pause` (`[pause]`, `[pause2]`) stops it at that marker. build.py writes the times to
   `out/part-N.json`, and `--site` puts them in `parts.json`.

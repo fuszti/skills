@@ -25,7 +25,8 @@ Sources, in order of trust:
    it again if the log is old or partial. Sign in as the test user from `environments.md`. Never use production.
 2. **Raw runner output:** pytest, vitest, Playwright or any runner, with the command, the commit and the exit code.
    For CI, read the job log (for example `gh run view <id> --log`).
-3. **Server-side evidence** for the same time window: the logs from `observability.md`.
+3. **Server-side evidence** for the same time window: the logs from `observability.md`. When
+   `docs/agents/recipes/logs.sh` exists, run it (`logs.sh <component> <from> <to>`) instead of writing a query.
 4. **The QA table** in the PR description or in notes. These are claims to verify, not evidence.
 
 For each scenario, record:

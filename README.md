@@ -32,6 +32,17 @@ And once per repo that you want videos about: `/fuszti-skills:setup-fuszti-skill
 requests, tickets, test environments, test commands, logs and traces live, and writes the answers to
 `docs/agents/`. Topics and grill-deck need no setup.
 
+Setup also writes what makes your threads specific to your repo:
+
+| File | What it gives every thread |
+|---|---|
+| `docs/agents/system-map.json` | one architecture map, drawn at the same places in every thread (`SystemMap.load()`) |
+| `docs/agents/lexicon.json` | how the voice says your product names and acronyms |
+| `docs/agents/explainer-profile.md` | series tag and footer, sections, parts to always add, known traps |
+| `docs/agents/recipes/*.sh` | tested read-only scripts for logs, traces and stores, with one interface |
+
+Edit these files by hand at any time.
+
 ## Skills
 
 | Skill | Use it for |
@@ -73,6 +84,10 @@ bash $K/scripts/explainer /tmp/demo --site         # feed page in /tmp/demo/site
 - Node.js 18 or later for UI recordings.
 - Optional: [agent-deck](https://github.com/asheshgoplani/agent-deck). With it, spoken follow-ups and grill-deck
   answers reach the Claude session at once. Without it they wait in a local queue that the session reads.
+
+## License
+
+MIT, see `LICENSE`.
 
 ## Licenses of downloaded parts
 

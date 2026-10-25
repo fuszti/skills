@@ -59,6 +59,11 @@ one time window. How long logs are kept. Which stores a test run writes to (data
 the read-only way to inspect each one. Which access needs the user's permission first.
 → `docs/agents/observability.md` (template: [observability.md](./observability.md))
 
+**E2. Recipes.** For each log source, trace backend and store from E and F, write one read-only script under
+`docs/agents/recipes/` with the fixed interface in [recipes.md](./recipes.md). Run each one once against a known
+time window, and show the user the first lines of the output. A recipe that fails to run is not written. Ask
+before a test run reads credentials.
+
 **F. Traces.** The trace backend (OpenTelemetry to Jaeger, Tempo, Honeycomb, Datadog, CloudWatch, Langfuse, a
 JSON export, none), how to fetch one trace by id or by time window, and which span attributes hold run ids, model
 names and token counts. → the `## Traces` section of `docs/agents/observability.md`
@@ -66,6 +71,19 @@ names and token counts. → the `## Traces` section of `docs/agents/observabilit
 **G. Areas and project skills.** Which repo skill to load before a thread explains each area. Propose a table from
 the `.claude/skills/` descriptions (path → skill), and let the user correct it.
 → `docs/agents/areas.md` (template: [areas.md](./areas.md))
+
+**H. Series profile.** What makes a thread about this repo look and sound like this repo:
+- **The map:** propose the 4–9 components that most threads show, from the architecture docs and `areas.md`, laid
+  out on the 1920×1080 canvas (content x 80–1840, y 200–900, at least 240 px between boxes that a packet crosses,
+  row 1 at y ≈ 310). Render it once with the kit (`--keys --dry`, one part that only shows the map) and show the
+  sheet to the user. → `docs/agents/system-map.json` (format: the kit's `example/system-map.json`)
+- **The lexicon:** product names, acronyms and ids that a voice reads wrongly, with the spoken form. Propose them
+  from the README, the package names and the glossary. → `docs/agents/lexicon.json` (format: the kit's
+  `example/lexicon.json`)
+- **The defaults:** the series tag and footer, the sections that `/shorts <n>` makes, parts to always add (for
+  example a security part when a change touches access control), and the traps that a thread must know (a log
+  field that lies, a span that double-counts, an environment quirk).
+→ `docs/agents/explainer-profile.md` (template: [explainer-profile.md](./explainer-profile.md))
 
 ## 3. Confirm and edit
 
@@ -86,7 +104,8 @@ Add this block, or update the existing `## Agent skills` block in place. Keep th
 
 Change requests: [one line]. Tickets: [one line]. Environments: [one line]. Tests: [one line].
 Logs and traces: [one line]. See `docs/agents/code-host.md`, `issue-tracker.md`, `environments.md`,
-`testing.md`, `observability.md` and `areas.md`.
+`testing.md`, `observability.md`, `recipes/`, `areas.md`, `explainer-profile.md`, `system-map.json` and
+`lexicon.json`.
 ```
 
 Then write the files from the templates in this folder. Write "none" sections as one line: `None: <reason>.`

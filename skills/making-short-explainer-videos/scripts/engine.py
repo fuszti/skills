@@ -46,10 +46,21 @@ SANS = "/System/Library/Fonts/SFNS.ttf"
 MONO = "/System/Library/Fonts/SFNSMono.ttf"
 # Linux / cloud: static Inter + JetBrains Mono files in EXPLAINER_FONT_DIR (the setup script downloads them).
 FONT_DIR = _os_fonts.environ.get("EXPLAINER_FONT_DIR", _os_fonts.path.expanduser("~/.local/share/explainer-fonts"))
-_SANS_FILES = {"Regular": "Inter-Regular", "Medium": "Inter-Medium", "Semibold": "Inter-SemiBold",
-               "Bold": "Inter-Bold", "Heavy": "Inter-ExtraBold", "Black": "Inter-Black"}
-_MONO_FILES = {"Regular": "JetBrainsMono-Regular", "Medium": "JetBrainsMono-Medium", "Semibold": "JetBrainsMono-Bold",
-               "Bold": "JetBrainsMono-Bold", "Heavy": "JetBrainsMono-Bold"}
+_SANS_FILES = {
+    "Regular": "Inter-Regular",
+    "Medium": "Inter-Medium",
+    "Semibold": "Inter-SemiBold",
+    "Bold": "Inter-Bold",
+    "Heavy": "Inter-ExtraBold",
+    "Black": "Inter-Black",
+}
+_MONO_FILES = {
+    "Regular": "JetBrainsMono-Regular",
+    "Medium": "JetBrainsMono-Medium",
+    "Semibold": "JetBrainsMono-Bold",
+    "Bold": "JetBrainsMono-Bold",
+    "Heavy": "JetBrainsMono-Bold",
+}
 USE_SF = _os_fonts.path.exists(SANS) and not _os_fonts.environ.get("EXPLAINER_FONT_DIR")
 _fonts: dict = {}
 
@@ -61,7 +72,9 @@ def font(size: float, weight: str = "Regular", mono: bool = False):
             f = ImageFont.truetype(MONO if mono else SANS, round(size))
             f.set_variation_by_name(weight)
         else:
-            name = (_MONO_FILES if mono else _SANS_FILES).get(weight, "JetBrainsMono-Regular" if mono else "Inter-Regular")
+            name = (_MONO_FILES if mono else _SANS_FILES).get(
+                weight, "JetBrainsMono-Regular" if mono else "Inter-Regular"
+            )
             path = _os_fonts.path.join(FONT_DIR, name + ".ttf")
             if not _os_fonts.path.exists(path):
                 raise SystemExit(f"font {path} missing: run the setup script or set EXPLAINER_FONT_DIR")
@@ -808,10 +821,15 @@ class Screen(El):
         ImageDraw.Draw(mask).rounded_rectangle([0, 0, SCR_W * SS - 1, SCR_H * SS - 1], radius=22 * SS, fill=255)
         self.mask = mask.resize((SCR_W, SCR_H), Image.LANCZOS)
         ov, d = _canvas(SCR_W, SCR_H)
-        d.rounded_rectangle([0, 0, SCR_W * SS - 1, SCR_H * SS - 1], radius=22 * SS, outline=with_alpha(LINE), width=3 * SS)
+        d.rounded_rectangle(
+            [0, 0, SCR_W * SS - 1, SCR_H * SS - 1], radius=22 * SS, outline=with_alpha(LINE), width=3 * SS
+        )
         self.overlay = _down(ov)
-        self.tag = Pill(0, SCR_X + 16, SCR_Y + 14, SERIES["badge"], RED, size=20, bg=(20, 10, 12),
-                        icon_name="spark") if badge else None
+        self.tag = (
+            Pill(0, SCR_X + 16, SCR_Y + 14, SERIES["badge"], RED, size=20, bg=(20, 10, 12), icon_name="spark")
+            if badge
+            else None
+        )
 
     def cam_at(self, t):
         i = max(0, bisect.bisect_right([s[0] for s in self.shots], t) - 1)
@@ -871,25 +889,56 @@ def lifelines(t0, names, xs, top=CONTENT_TOP + 10, bottom=CONTENT_BOTTOM, icons=
     """UML sequence-diagram heads + dashed lifelines. Pair with msg()."""
     els = []
     for k, (n, x) in enumerate(zip(names, xs)):
-        els.append(Box(t0 + k * 0.12, x - 125, top, 250, 86, n, tsize=32, icon_name=(icons or [None] * len(names))[k],
-                       fill=PANEL2))
-        els.append(Arrow(t0 + 0.2 + k * 0.12, [(x, top + 90), (x, bottom)], color=LINE, width=3, head=False,
-                         dashed=True, grow=0.5))
+        els.append(
+            Box(
+                t0 + k * 0.12,
+                x - 125,
+                top,
+                250,
+                86,
+                n,
+                tsize=32,
+                icon_name=(icons or [None] * len(names))[k],
+                fill=PANEL2,
+            )
+        )
+        els.append(
+            Arrow(
+                t0 + 0.2 + k * 0.12,
+                [(x, top + 90), (x, bottom)],
+                color=LINE,
+                width=3,
+                head=False,
+                dashed=True,
+                grow=0.5,
+            )
+        )
     return els
 
 
 def msg(t0, x0, x1, y, label, color=T2, dashed=False, lsize=26):
     """One sequence-diagram message; dashed = a reply."""
-    return Arrow(t0, [(x0, y), (x1, y)], color=color, dashed=dashed, label=label,
-                 lpos=((x0 + x1) / 2, y - 26), lsize=lsize, lcolor=color if color != T2 else T1, grow=0.4)
+    return Arrow(
+        t0,
+        [(x0, y), (x1, y)],
+        color=color,
+        dashed=dashed,
+        label=label,
+        lpos=((x0 + x1) / 2, y - 26),
+        lsize=lsize,
+        lcolor=color if color != T2 else T1,
+        grow=0.4,
+    )
 
 
 def review_card(m, keys, title, bullets):
     """'REVIEW CHECK' card. keys: marker names; keys[0] shows the card, keys[k+1] reveals bullet k."""
     t0 = m[keys[0]]
     top = CONTENT_TOP + 10
-    els = [Pill(t0, X0 + 30, top + 22, "REVIEW CHECK", AMBER, size=24, icon_name="check"),
-           Txt(t0, X0 + 30, top + 88, title, 44, T1, "Heavy", maxw=CW - 60)]
+    els = [
+        Pill(t0, X0 + 30, top + 22, "REVIEW CHECK", AMBER, size=24, icon_name="check"),
+        Txt(t0, X0 + 30, top + 88, title, 44, T1, "Heavy", maxw=CW - 60),
+    ]
     y = top + 88 + els[-1].size_px[1] + 26
     for k, b in enumerate(bullets):
         t = m[keys[k + 1]] if k + 1 < len(keys) else m[keys[-1]] + 1.2 * (k + 2 - len(keys))
@@ -922,8 +971,10 @@ def waterfall(t0, spans, total_ms=None, y=CONTENT_TOP + 50, row_h=50, label_w=48
     reveal: optional list of times, one per span (else t0 + i*step)."""
     total = total_ms or max(s["start_ms"] + s["dur_ms"] for s in spans)
     bar_w = CW - label_w - 10
-    els = [Txt(t0, X0, y - 44, "0 ms", 22, T3, mono=True, t1=t1),
-           Txt(t0, X1, y - 44, f"{total / 1000:.1f} s", 22, T3, mono=True, anchor="r", t1=t1)]
+    els = [
+        Txt(t0, X0, y - 44, "0 ms", 22, T3, mono=True, t1=t1),
+        Txt(t0, X1, y - 44, f"{total / 1000:.1f} s", 22, T3, mono=True, anchor="r", t1=t1),
+    ]
     for i, sp in enumerate(spans):
         t = reveal[i] if reveal else t0 + i * step
         ry = y + i * row_h
@@ -962,8 +1013,13 @@ class Stamp(El):
         w, h = tw + 2 * pad, self.size * 1.5 * SS
         img = Image.new("RGBA", (int(w), int(h)), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
-        d.rounded_rectangle([3 * SS, 3 * SS, w - 3 * SS, h - 3 * SS], radius=14 * SS, outline=with_alpha(self.color),
-                            width=6 * SS, fill=with_alpha(BG, 225))
+        d.rounded_rectangle(
+            [3 * SS, 3 * SS, w - 3 * SS, h - 3 * SS],
+            radius=14 * SS,
+            outline=with_alpha(self.color),
+            width=6 * SS,
+            fill=with_alpha(BG, 225),
+        )
         d.text((w / 2, h / 2), self.text, font=f, fill=with_alpha(self.color), anchor="mm")
         img = _down(img).rotate(self.angle, expand=True, resample=Image.BICUBIC)
         return img, self.cx - img.width / 2, self.cy - img.height / 2
@@ -988,8 +1044,10 @@ VERDICT_COLORS = {"VERIFIED": GREEN, "FAILED": RED, "NOT RUN": AMBER, "YOUR CALL
 
 def check_question(t0, k, question, t1=None):
     """Opening of a check part: 'CHECK k' pill + the question in big type."""
-    return [Pill(t0, X0, CONTENT_TOP + 6, f"CHECK {k}", PURPLE, size=26, icon_name="test", t1=t1),
-            Txt(t0 + 0.15, X0, CONTENT_TOP + 66, question, 56, T1, "Heavy", maxw=CW, lh=1.15, t1=t1)]
+    return [
+        Pill(t0, X0, CONTENT_TOP + 6, f"CHECK {k}", PURPLE, size=26, icon_name="test", t1=t1),
+        Txt(t0 + 0.15, X0, CONTENT_TOP + 66, question, 56, T1, "Heavy", maxw=CW, lh=1.15, t1=t1),
+    ]
 
 
 def guess(t0, options, reveal, correct, y=CONTENT_TOP + 300, x=X0, w=LEFT_W, t1=None):
@@ -1000,8 +1058,22 @@ def guess(t0, options, reveal, correct, y=CONTENT_TOP + 300, x=X0, w=LEFT_W, t1=
     els = [Txt(t0, X0, y - 52, label, 28, PURPLE, "Bold", t1=t1)]
     for i, opt in enumerate(options):
         oy = y + i * 108
-        els.append(Box(t0 + 0.15 * i, x, oy, w, 92, f"{'ABC'[i]}   {opt}", fill=PANEL, border=LINE, tsize=32,
-                       align="l", radius=16, t1=t1))
+        els.append(
+            Box(
+                t0 + 0.15 * i,
+                x,
+                oy,
+                w,
+                92,
+                f"{'ABC'[i]}   {opt}",
+                fill=PANEL,
+                border=LINE,
+                tsize=32,
+                align="l",
+                radius=16,
+                t1=t1,
+            )
+        )
         if correct is not None and reveal is not None:
             if i == correct:
                 els.append(Rect(reveal, x, oy, w, 92, outline=GREEN, radius=16, bw=5, t1=t1, fade=0.15))
@@ -1018,8 +1090,9 @@ def verdict(t0, state, evidence=None, cy=CONTENT_TOP + 330, question=None, cx=RC
     if evidence:
         els.append(Txt(t0 + 0.5, cx, cy + 90, evidence, 30, T2, anchor="c", maxw=maxw, t1=t1))
     if question:
-        els.append(Txt(t0 + 1.0, cx, cy + 150, f"Your call: {question}", 30, BLUE, "Semibold", anchor="c", maxw=maxw,
-                       t1=t1))
+        els.append(
+            Txt(t0 + 1.0, cx, cy + 150, f"Your call: {question}", 30, BLUE, "Semibold", anchor="c", maxw=maxw, t1=t1)
+        )
     return els
 
 
@@ -1096,9 +1169,12 @@ class Pulse(El):
         pad = 10
         img, d = _canvas(self.w + 2 * pad, self.h + 2 * pad)
         for k, (inset, width, alpha) in enumerate([(0, 10, 60), (4, 6, 120), (8, 4, 255)]):
-            d.rounded_rectangle([inset * SS, inset * SS, (self.w + 2 * pad - inset) * SS, (self.h + 2 * pad - inset) * SS],
-                                radius=(self.radius + pad - inset) * SS, outline=with_alpha(self.color, alpha),
-                                width=width * SS)
+            d.rounded_rectangle(
+                [inset * SS, inset * SS, (self.w + 2 * pad - inset) * SS, (self.h + 2 * pad - inset) * SS],
+                radius=(self.radius + pad - inset) * SS,
+                outline=with_alpha(self.color, alpha),
+                width=width * SS,
+            )
         return _down(img), self.x - pad, self.y - pad
 
     def draw(self, frame, t, end):
@@ -1119,6 +1195,22 @@ class SystemMap:
     def __init__(self, nodes, routes=None):
         self.nodes = nodes
         self.routes = routes or {}  # {(a, b): [(x, y), ...]} for an edge that must bend around a box
+
+    @classmethod
+    def load(cls, path):
+        """The repo's own map (docs/agents/system-map.json), so every thread about a repo draws the same system at
+        the same places: {"nodes": {key: {x, y, w, h, title, sub, icon, color}}, "routes": {"a>b": [[x, y], ...]}}.
+        color is a name: amber, green, red, blue, purple, t2."""
+        import json
+
+        names = {"amber": AMBER, "green": GREEN, "red": RED, "blue": BLUE, "purple": PURPLE, "t2": T2}
+        d = json.load(open(path))
+        nodes = {
+            k: (n["x"], n["y"], n["w"], n["h"], n["title"], n.get("sub"), n.get("icon"), names[n.get("color", "amber")])
+            for k, n in d["nodes"].items()
+        }
+        routes = {tuple(k.split(">")): [tuple(p) for p in pts] for k, pts in d.get("routes", {}).items()}
+        return cls(nodes, routes)
 
     def rect(self, k):
         x, y, w, h = self.nodes[k][:4]
@@ -1152,21 +1244,35 @@ class SystemMap:
         els = []
         for i, k in enumerate(keys or list(self.nodes)):
             x, y, w, h, title, sub, ic, col = self.nodes[k]
-            els.append(Box(t0 + i * step, x, y, w, h, title, sub, icon_name=ic, icolor=col, tsize=tsize, ssize=ssize,
-                           t1=t1))
+            els.append(
+                Box(t0 + i * step, x, y, w, h, title, sub, icon_name=ic, icolor=col, tsize=tsize, ssize=ssize, t1=t1)
+            )
         return els
 
     def edge(self, t0, a, b, label=None, color=LINE, dashed=False, shift=0, t1=None, lsize=22):
         pts = self.path(a, b, shift)
         i = (len(pts) - 1) // 2
         mid = ((pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2 - 22)
-        return Arrow(t0, pts, color=color, width=4, dashed=dashed, label=label, lpos=mid if label else None,
-                     lsize=lsize, lcolor=color if color != LINE else T2, t1=t1)
+        return Arrow(
+            t0,
+            pts,
+            color=color,
+            width=4,
+            dashed=dashed,
+            label=label,
+            lpos=mid if label else None,
+            lsize=lsize,
+            lcolor=color if color != LINE else T2,
+            t1=t1,
+        )
 
     def focus(self, t0, keep, t1=None, alpha=175):
         """Dim every node not in `keep` (the 'you are here' view)."""
-        return [Rect(t0, x - 2, y - 2, w + 4, h + 4, fill=BG, alpha=alpha, radius=20, t1=t1, fade=0.25)
-                for k, (x, y, w, h, *_r) in self.nodes.items() if k not in keep]
+        return [
+            Rect(t0, x - 2, y - 2, w + 4, h + 4, fill=BG, alpha=alpha, radius=20, t1=t1, fade=0.25)
+            for k, (x, y, w, h, *_r) in self.nodes.items()
+            if k not in keep
+        ]
 
     def pulse(self, t0, k, color=AMBER, t1=None):
         return Pulse(t0, *self.rect(k), color=color, t1=t1)
@@ -1191,15 +1297,18 @@ def store(t0, x, y, w, title, shelves, color=GREEN, icon_name="db", shelf_h=78, 
     """A data store drawn as a container with labelled shelves (bucket prefixes, tables, keys). Returns
     (elements, slots): slots[i] is the (x, y, w, h) of shelf i, for store_item()."""
     h = 70 + len(shelves) * (shelf_h + 10)
-    els = [Box(t0, x, y, w, h, "", fill=PANEL, border=color, radius=18, t1=t1),
-           Txt(t0, x + 20, y + 16, title, 28, color, "Bold", t1=t1)]
+    els = [
+        Box(t0, x, y, w, h, "", fill=PANEL, border=color, radius=18, t1=t1),
+        Txt(t0, x + 20, y + 16, title, 28, color, "Bold", t1=t1),
+    ]
     if icon_name:
         els[-1] = Pill(t0, x + 16, y + 12, title, color, size=24, icon_name=icon_name, t1=t1)
     slots = []
     for i, name in enumerate(shelves):
         sy = y + 64 + i * (shelf_h + 10)
-        els.append(Rect(t0 + 0.1 * i, x + 14, sy, w - 28, shelf_h, fill=BG, outline=LINE, alpha=255, radius=10, bw=2,
-                        t1=t1))
+        els.append(
+            Rect(t0 + 0.1 * i, x + 14, sy, w - 28, shelf_h, fill=BG, outline=LINE, alpha=255, radius=10, bw=2, t1=t1)
+        )
         els.append(Txt(t0 + 0.1 * i, x + 28, sy + 8, name, 20, T3, "Semibold", mono=True, t1=t1))
         slots.append((x + 14, sy, w - 28, shelf_h))
     return els, slots
@@ -1214,8 +1323,17 @@ def store_item(t0, slot, text, color=GREEN, col=0.0, deleted_at=None, size=21, t
     els = [Pill(t0, x, y, text, color, size=size, icon_name=icon_name, t1=end, rise=-36, fade=0.3)]
     if deleted_at is not None:
         tw = font(size).getlength(text) + size * 1.6 + (size if icon_name else 0)
-        els.append(Arrow(deleted_at, [(x - 6, y + size * 0.9), (x + tw + 6, y + size * 0.9)], color=RED, width=4,
-                         head=False, grow=0.3, t1=end))
+        els.append(
+            Arrow(
+                deleted_at,
+                [(x - 6, y + size * 0.9), (x + tw + 6, y + size * 0.9)],
+                color=RED,
+                width=4,
+                head=False,
+                grow=0.3,
+                t1=end,
+            )
+        )
     return els
 
 

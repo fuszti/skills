@@ -29,7 +29,9 @@ For every test step, record in `<project>/evidence/runtime-join.json`:
 - the browser network lines of the step (method, path, status, time), with signed URLs redacted
 
 Then pull each component's evidence for that window, the same day. Logs expire: check "Kept for" in
-`observability.md`. "Where" for each row comes from `observability.md`.
+`observability.md`. "Where" for each row comes from `observability.md`. When `docs/agents/recipes/` has a
+script for the source (`logs.sh`, `trace.sh`, `store.sh`), run it instead of writing a query. Its output is the
+evidence file. Draw the runtime map from `docs/agents/system-map.json` when it exists.
 
 | Component | What it tells |
 |---|---|

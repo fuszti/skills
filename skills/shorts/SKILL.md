@@ -38,7 +38,11 @@ The change, test, runtime and trace skills read `docs/agents/*.md` in the user's
 | `environments.md` | where the change runs, how a test user signs in, the test-data prefix |
 | `testing.md` | how to run tests at a commit in a separate worktree |
 | `observability.md` | logs, stores and traces, all read-only |
+| `recipes/*.sh` | tested read-only scripts for logs, traces and stores. Prefer them to writing a query again |
 | `areas.md` | which repo skill to load per touched path |
+| `explainer-profile.md` | the series defaults: tag, footer, sections of `/shorts <n>`, parts to always add, known traps |
+| `system-map.json` | the repo's one architecture map. Load it with `SystemMap.load()` in every thread |
+| `lexicon.json` | how the voice says the repo's terms. Set `SERIES["lexicon"]` to its absolute path |
 
 If a file is missing, tell the user once: "Run `/setup-fuszti-skills` to record this repo's workflow." Then
 continue with what is available, for example `git` alone for a diff. Name the parts you could not make in the

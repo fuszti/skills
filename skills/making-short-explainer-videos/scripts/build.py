@@ -134,11 +134,36 @@ def tts(project, cfg, text):
     return wav, align
 
 
+MARKUP = re.compile(r"(\{[^}]*\}|\[\w+\])")
+
+
+def lexicon(project, cfg):
+    """{term: spoken} from SERIES["lexicon"] (usually the repo's docs/agents/lexicon.json), else <project>/lexicon.json."""
+    path = cfg.get("lexicon") or os.path.join(project, "lexicon.json")
+    path = path if os.path.isabs(path) else os.path.join(project, path)
+    return json.load(open(path)) if os.path.exists(path) else {}
+
+
+def apply_lexicon(narration, lex):
+    """Write {term|spoken} for every lexicon term, so the caption keeps the term and the voice says it right.
+    Markers and markup the narration already has stay as they are."""
+    if not lex:
+        return narration
+    terms = re.compile(
+        r"(?<![\w-])(" + "|".join(re.escape(t) for t in sorted(lex, key=len, reverse=True)) + r")(?![\w-])"
+    )
+    return "".join(
+        seg if MARKUP.fullmatch(seg) else terms.sub(lambda m: f"{{{m.group(1)}|{lex[m.group(1)]}}}", seg)
+        for seg in MARKUP.split(narration)
+    )
+
+
 def timeline(project, cfg, ep):
     """Builders get m = {marker: seconds, "s": scene start, "end": scene end}. Never name a marker s or end."""
     parts, info, off = [], [], 0
+    lex = lexicon(project, cfg)
     for narration, builder in ep["scenes"]:
-        spoken, markers, words = E.parse(narration)
+        spoken, markers, words = E.parse(apply_lexicon(narration, lex))
         bad = {"s", "end"} & set(markers)
         if bad:
             raise SystemExit(f"part {ep['n']}: marker names {bad} are reserved")

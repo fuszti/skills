@@ -43,6 +43,12 @@ hexgrad/Kokoro-82M `VOICES.md`).
 4. **Write `<project>/episodes.py`.** Copy `example/episodes.py` and use the helpers in `reference/api.md`.
    - The default project folder is `<session scratchpad or temp dir>/<slug>-shorts`. It holds `episodes.py`,
      `rec/`, `tts/`, `out/` and `site/`. Keep it outside any repo.
+   - **The repo's profile:** when the repo has `docs/agents/system-map.json`, build the series map with
+     `SystemMap.load("<repo>/docs/agents/system-map.json")`, so every thread draws the same system at the same
+     places. Add a component that a thread needs to that file too, and tell the user. When the repo has
+     `docs/agents/lexicon.json`, set `SERIES["lexicon"]` to its absolute path: the build writes `{term|spoken}` for
+     every term in it. Take `tag`, `footer` and the part rules from `docs/agents/explainer-profile.md`. Formats:
+     `example/system-map.json`, `example/lexicon.json`.
    - **Narration:** read it aloud in your head. Write `{caption|spoken}` for anything that TTS reads wrongly:
      ids ("I Ds"), acronyms ("S Q L", "D B"), model names (`{Opus 5.5|Opus five point five}`), version tags
      (`{v0.1.0-alpha.20|version zero point one alpha twenty}`), and file names (say the idea, not `.py`).
