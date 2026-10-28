@@ -117,6 +117,9 @@ def apply_update(tree, u):
             added += 1
             continue
         patch = dict(d)
+        if ex.get("status") == "answered" and ex.get("sent") and "status" not in patch:
+            # a reply to a sent card that does not settle it reopens it, else it waits in Settled forever
+            patch["status"] = "open"
         if patch.get("status") in ("open", "blocked"):
             patch.update(sent=False, choices=[], text="")
         if ex.get("status") == "answered" and not ex.get("sent"):

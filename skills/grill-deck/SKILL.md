@@ -86,7 +86,8 @@ Each section is optional. Messages can arrive while you are still working (Claud
 order, and fold a late one into your next update.
 
 The deck changes a question only when you update it: a sent card waits in "Settled" as "waiting for Claude" until
-you settle or reopen it. So answer EVERY input with an update, even when it only rewords a card.
+you settle or reopen it. So answer EVERY input with an update, even when it only rewords a card. An update to a
+sent card that does not settle it reopens it (back to the frontier, the user's pick cleared).
 
 1. In ONE `$D update`: settle each answered decision (`status: "settled"`, `answer`), settle what the talk and the
    typed text clearly answer, fold partial information into bodies and recommendations, open the decisions the input
