@@ -1,5 +1,6 @@
 /* every color, radius, spacing and font comes from /theme.css (themes.json + the user's config) */
 body{margin:0}
+[hidden]{display:none!important}
 .app{--col-h:calc(100vh - 80px);min-height:100vh;box-sizing:border-box;display:flex;flex-direction:column;font-family:var(--font);font-size:14px;line-height:1.5;color:var(--text);
   background-color:var(--bg);background-image:radial-gradient(var(--dot) 1px,transparent 1px);background-size:22px 22px}
 .app *{box-sizing:border-box}
@@ -147,7 +148,7 @@ body.resizing,body.resizing *{user-select:none!important}
 .stage .placeholder strong{color:var(--text)}
 
 /* questions */
-.qhead{margin:2px 0 0;display:flex;align-items:center;gap:8px}
+.qhead{margin:2px 0 0;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
 .qcol{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;position:relative;display:flex;flex-direction:column;gap:8px;padding:2px 4px 2px 2px}
 .qcol .spacer{flex-shrink:0;height:calc(var(--col-h) - 180px)}
 .q{flex-shrink:0;overflow:hidden;transition:border-color .2s,box-shadow .2s}
@@ -182,3 +183,12 @@ body.resizing,body.resizing *{user-select:none!important}
 .actions .btn:disabled{cursor:default;color:var(--muted);border-style:dashed}
 
 @media (prefers-reduced-motion: reduce){.live,.mic.on,.bar>div{animation:none}.q,.opt,.tab,.chev,.sec-toggle .chev{transition:none}}
+
+.defaults{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r-md);background:var(--panel);border:1px dashed var(--ctl);font-size:12px}
+.defaults .dtext{flex:1 1 160px;min-width:0;color:var(--muted)}
+.defaults .dtext b{color:var(--text)}
+.why{margin:0;padding:8px 11px;border-radius:var(--r-md);background:var(--warn-soft);color:var(--warn);font-size:12px;font-weight:600}
+.rec .counter b{color:var(--warn)}
+.linkbtn{border:0;background:none;padding:0;min-height:24px;color:var(--accent);font-size:12px;font-weight:600;text-decoration:underline}
+.ptile.review,.ptile.scan{color:var(--accent);background:var(--accent-soft)}
+.tab .chip{margin-left:2px}

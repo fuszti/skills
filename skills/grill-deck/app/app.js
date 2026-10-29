@@ -2,7 +2,7 @@
 // grill-deck page: renders /api/state, posts answers and chat, and cuts the mic stream into utterances.
 
 const $ = (s, el = document) => el.querySelector(s);
-const ui = { open: new Set(), lastOpen: null, focus: null, vtabs: {}, vseen: {}, drafts: {}, timers: {}, asking: {} };
+const ui = { open: new Set(), lastOpen: null, focus: null, vtabs: {}, vseen: {}, drafts: {}, timers: {}, asking: {}, needReason: {} };
 let S = null;
 let version = -1;
 
@@ -31,6 +31,7 @@ const SVG = {
   code: '<path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/>',
   probe: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/>',
   visual: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 15l3-3 3 3 4-4"/>',
+  review: '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
   chev: '<path d="M6 9l6 6 6-6"/>',
 };
 function icon(name, size = 16) {
@@ -80,7 +81,7 @@ function frontier() {
   const done = settledIds();
   return S.decisions.filter(d => d.status !== 'settled' && (d.prereqs || []).every(p => done.has(p)));
 }
-const waitingFor = id => S.processes.some(p => p.state === 'running' && p.for === id && p.kind !== 'visual');
+const waitingFor = id => S.processes.some(p => p.state === 'running' && p.for === id && !['visual', 'review'].includes(p.kind));
 
 function render() {
   const open = frontier();
@@ -91,6 +92,7 @@ function render() {
   const openCount = open.filter(d => d.status !== 'answered').length;
   $('#open-chip').textContent = `${openCount} open`;
   $('#open-chip').className = 'chip' + (openCount ? ' warn' : ' ok');
+  renderDepth();
   const working = S.claude === 'working';
   $('#chat-state').className = 'chip ' + (!S.server.session ? 'warn' : working ? 'acc' : 'ok');
   $('#chat-state').replaceChildren(...(!S.server.session ? ['no session'] : working
@@ -102,8 +104,38 @@ function render() {
   // open questions first, answered-but-unsent below them; sent ones wait in the Settled section
   const rank = d => (d.status === 'answered' ? 1 : 0);
   renderQuestions(open.filter(d => !(d.status === 'answered' && d.sent)).sort((a, b) => rank(a) - rank(b)));
+  renderDefaults(open);
   renderVisuals();
   paintSend();
+}
+
+function renderDepth() {
+  const chip = $('#depth-chip');
+  const dp = S.depth;
+  chip.hidden = !dp;
+  if (!dp) return;
+  const b = S.budget || {};
+  const parts = [{ full: 'full depth', rfc: 'design only', park: 'parked' }[dp.level] || dp.level];
+  if (b.maxRounds) parts.push(`round ${S.round}/${b.maxRounds}`);
+  if (b.maxProbes) parts.push(`research ${b.probes}/${b.maxProbes}`);
+  const over = (b.maxRounds && S.round > b.maxRounds) || (b.maxProbes && b.probes > b.maxProbes);
+  chip.className = 'chip' + (over ? ' bad' : '');
+  chip.textContent = parts.join(' · ');
+}
+
+function renderDefaults(open) {
+  const box = $('#defaults');
+  const ds = open.filter(d => d.default && d.stake !== 'high' && d.status === 'open' && d.recommendedOption != null);
+  box.hidden = ds.length < 2;
+  if (box.hidden) return;
+  box.replaceChildren(
+    h('span', { class: 'dtext' }, h('b', { text: `${ds.length} low-stake defaults` }), ` · ${ds.map(d => d.id).join(', ')}`),
+    h('button', {
+      type: 'button', class: 'btn', text: `Accept all ${ds.length} recommendations`,
+      onclick: async () => {
+        try { await post('/api/defaults', { ids: ds.map(d => d.id) }); await refresh(); } catch (e) { alertLine(`Not sent: ${e.message}`); }
+      },
+    }));
 }
 
 function answerSummary(d) {
@@ -135,6 +167,13 @@ function renderVoice() {
   if (mic.speaking) heard.append(mic.live ? `“${mic.live}”` : h('span', { class: 'muted live', text: '…' }));
   else if (mic.final && Date.now() < mic.final.until) heard.append(`“${mic.final.text}”`);
   else if (mic.error && !mic.on) heard.append(h('span', { style: 'color:var(--bad)', text: `Mic not available: ${mic.error}` }));
+  else {
+    const last = S.transcript.at(-1);
+    if (last?.dropped && !last.sent && S.server.now - last.at < 20) {
+      heard.append(h('span', { class: 'muted', text: `“${last.text}” · ignored as ${last.dropped} ` }),
+        h('button', { type: 'button', class: 'linkbtn', text: 'Send anyway', onclick: () => post('/api/keep', { id: last.id }).then(refresh).catch(e => alertLine(`Not sent: ${e.message}`)) }));
+    }
+  }
   const j = $('#judge');
   const p = S.pending || { state: 'idle' };
   j.replaceChildren();
@@ -164,7 +203,11 @@ function renderLedger() {
     h('span', { class: 'qid mono', text: d.id }),
     h('span', { style: 'min-width:0;display:block' }, h('span', { class: 't', text: d.title }),
       chip ? h('span', { class: 'chip acc', text: chip }) : null, h('span', { class: 'a', text: answer })));
-  const rows = [...waiting.map(d => row(d, answerSummary(d), 'waiting for Claude')), ...settled.map(d => row(d, d.answer || ''))];
+  const followups = (S.followups || []).map(f => h('div', { class: 'ledger-row divider' },
+    h('span', { class: 'qid mono', text: 'later' }),
+    h('span', { style: 'min-width:0;display:block' }, h('span', { class: 't', text: f.title }),
+      h('span', { class: 'chip warn', text: 'follow-up ticket' }), h('span', { class: 'a', text: (f.facts || []).join('; ') }))));
+  const rows = [...waiting.map(d => row(d, answerSummary(d), 'waiting for Claude')), ...settled.map(d => row(d, d.answer || '')), ...followups];
   $('#ledger').replaceChildren(...(rows.length ? rows : [h('div', { class: 'empty', text: 'Nothing settled yet.' })]));
 }
 
@@ -176,7 +219,8 @@ function renderProcs() {
   const box = $('#procs');
   if (!procs.length) { box.replaceChildren(h('div', { class: 'empty', text: 'No research, probe or visual running.' })); return; }
   box.replaceChildren(...procs.slice(0, 30).map(p => {
-    const kind = { web: 'Web', code: 'Codebase', probe: 'Probe', visual: 'Visual' }[p.kind] || p.kind;
+    const kind = { web: 'Web', code: 'Codebase', probe: 'Probe', visual: 'Visual', review: 'Reviewer', scan: 'Scan' }[p.kind] || p.kind;
+    const VCHIP = { killed: 'bad', changed: 'acc', confirmed: 'ok', inconclusive: '' };
     const bar = p.progress && p.state === 'running' ? h('div', {
       class: 'bar', role: 'progressbar', 'aria-label': p.title, 'aria-valuemin': 0,
       'aria-valuemax': p.progress[1], 'aria-valuenow': p.progress[0],
@@ -184,7 +228,8 @@ function renderProcs() {
     return h('div', { class: 'proc divider' },
       h('div', { class: `ptile ${p.kind}` }, icon(p.kind in SVG ? p.kind : 'code')),
       h('div', { style: 'flex:1 1 auto;min-width:0' },
-        h('div', { class: 'meta' }, h('span', { class: 'eyebrow small', text: kind }), p.for ? h('span', { class: 'chip acc', text: p.for }) : null),
+        h('div', { class: 'meta' }, h('span', { class: 'eyebrow small', text: kind }), p.for ? h('span', { class: 'chip acc', text: p.for }) : null,
+          p.verdict ? h('span', { class: `chip ${VCHIP[p.verdict] ?? ''}`, text: p.verdict }) : null),
         h('div', { class: 'ptitle', text: p.title }),
         h('div', { class: 'pstatus' }, h('span', { class: `dot ${p.state}${p.state === 'running' ? ' live' : ''}` }),
           h('span', { 'data-started': p.started, 'data-ended': p.ended || '', text: elapsed(p.started, p.ended) }),
@@ -347,16 +392,20 @@ function renderVisuals() {
   const cur = q && items.find(v => v.id === ui.vtabs[q.id]);
   $('#vhead').replaceChildren(...(q ? [h('span', { class: 'qid mono', text: q.id }), h('span', { class: 'vtitle', text: q.title })]
     : [h('span', { class: 'vtitle muted', text: 'Open a question to see its visuals' })]));
-  $('#tabs').replaceChildren(...items.map(v => h('button', {
-    type: 'button', class: 'tab', 'aria-current': String(cur && v.id === cur.id), title: v.title,
-    onclick: () => { ui.vtabs[q.id] = v.id; renderVisuals(); },
-  }, v.title)), ...drawing.map(p => h('span', { class: 'tab drawing', title: p.title }, h('span', { class: 'dot running live' }), p.title)));
+  $('#tabs').replaceChildren(...items.map(v => {
+    const bad = v.lint && v.lint.file === v.file;
+    return h('button', {
+      type: 'button', class: 'tab', 'aria-current': String(cur && v.id === cur.id),
+      title: bad ? `${v.title}: ${v.lint.problems.join('; ')}` : v.title,
+      onclick: () => { ui.vtabs[q.id] = v.id; renderVisuals(); },
+    }, v.title, bad ? h('span', { class: 'chip warn', text: 'fixing' }) : null);
+  }), ...drawing.map(p => h('span', { class: 'tab drawing', title: p.title }, h('span', { class: 'dot running live' }), p.title)));
   const stage = $('#stage');
   if (cur) {
     const src = '/visuals/' + encodeURIComponent(cur.file);
     const frame = stage.querySelector('iframe');
     if (!frame || frame.getAttribute('src') !== src) {
-      stage.replaceChildren(h('iframe', { src, title: `${q.id}: ${cur.title}`, sandbox: 'allow-scripts' }));
+      stage.replaceChildren(h('iframe', { src, title: `${q.id}: ${cur.title}`, sandbox: 'allow-scripts', 'data-qid': q.id, 'data-vid': cur.id }));
     }
   } else if (drawing.length) {
     stage.replaceChildren(h('div', { class: 'placeholder' }, h('div', { class: 'ptile visual live', style: 'width:48px;height:48px' }, icon('visual', 22)),
@@ -414,6 +463,7 @@ function makeCard(d) {
       e.preventDefault();
       const text = e.target.value.trim();
       const card = S.decisions.find(x => x.id === d.id);
+      if (ui.needReason[d.id] !== undefined) { if (text) chooseWithReason(card, text); return; }
       if (text || (card && card.status === 'answered' && !card.sent)) answerText(d.id, text);
     },
   });
@@ -421,6 +471,7 @@ function makeCard(d) {
     h('p', { class: 'q-text' }),
     h('div', { class: 'opts', role: 'group', 'aria-label': 'Options' }),
     h('div', { class: 'rec' }),
+    h('p', { class: 'why', role: 'status', hidden: true }),
     h('label', { for: 'ans-' + d.id, class: 'eyebrow small', text: 'Your own answer, or just talk' }),
     ta,
     h('div', { class: 'actions' },
@@ -458,6 +509,8 @@ function updateCard(el, d) {
   const nv = (S.visuals[d.id] || []).length;
   if (nv) chips.push(['chip', nv > 1 ? `${nv} visuals` : 'visual']);
   if (d.stake === 'high') chips.push(['chip', 'hard to undo']);
+  if (d.confirms) chips.push(['chip warn', `confirms ${d.confirms}`]);
+  if (d.default && d.stake !== 'high') chips.push(['chip', 'default']);
   el.querySelector('.q-chips').replaceChildren(...chips.map(([c, t]) => h('span', { class: c },
     c.includes('live-chip') ? h('span', { class: 'dot live', style: 'width:6px;height:6px;background:currentColor' }) : null, t)));
   el.querySelector('.q-text').textContent = d.body || '';
@@ -472,9 +525,15 @@ function updateCard(el, d) {
       i === d.recommendedOption ? h('span', { class: 'chip ok', text: 'recommended' }) : null)));
   }
   el.querySelector('.opts').style.display = opts.length ? '' : 'none';
+  const guarded = guardOn(d);
   el.querySelector('.rec').replaceChildren(
     h('div', {}, h('b', { text: 'Recommended' }), ` · ${d.recommendation || ''}`),
-    d.flip ? h('div', { class: 'flip' }, h('b', { text: 'What would change this' }), ` · ${d.flip}`) : '');
+    d.flip ? h('div', { class: 'flip' }, h('b', { text: 'What would change this' }), ` · ${d.flip}`) : '',
+    d.counter && guarded ? h('div', { class: 'flip counter' }, h('b', { text: 'Strongest case against' }), ` · ${d.counter}`) : '');
+  const why = el.querySelector('.why');
+  const asking = ui.needReason[d.id] !== undefined;
+  why.hidden = !asking;
+  why.textContent = asking ? `Why option ${ui.needReason[d.id] + 1}? ${d.stake === 'high' ? 'This one is hard to undo.' : `You accepted ${S.guard.streak} recommendations in a row.`} One line, then Enter.` : '';
   const ta = el.querySelector('textarea');
   if (document.activeElement !== ta) ta.value = ui.drafts[d.id] ?? d.text ?? '';
 }
@@ -493,15 +552,36 @@ function toggleCard(id) {
   });
 }
 
+// a high-stake card, or a run of fast recommended picks, asks for one line of reason before it sends
+const guardOn = d => d.stake === 'high' || (S.guard && S.guard.streak >= S.guard.limit);
+
 async function choose(d, i) {
+  const note = (ui.drafts[d.id] || '').trim();
+  if (!d.multi && i === d.recommendedOption && guardOn(d) && !note) {
+    ui.needReason[d.id] = i;
+    ui.open.add(d.id);
+    ui.lastOpen = d.id;
+    render();
+    $('#ans-' + d.id)?.focus();
+    return;
+  }
+  delete ui.needReason[d.id];
   if (!d.multi) { ui.open.delete(d.id); if (ui.lastOpen === d.id) ui.lastOpen = null; }
   // a single choice is a complete answer: it goes to Claude at once (with a typed note, if any)
-  const note = (ui.drafts[d.id] || '').trim();
   try {
     await post('/api/answer', d.multi ? { id: d.id, choice: i } : { id: d.id, choice: i, text: note, send: true });
     if (!d.multi) delete ui.drafts[d.id];
     await refresh();
   } catch (e) { alertLine(`Not sent: ${e.message}`); }
+}
+
+async function chooseWithReason(d, text) {
+  const i = ui.needReason[d.id];
+  delete ui.needReason[d.id];
+  ui.open.delete(d.id);
+  if (ui.lastOpen === d.id) ui.lastOpen = null;
+  try { await post('/api/answer', { id: d.id, choice: i, text, send: true }); delete ui.drafts[d.id]; await refresh(); }
+  catch (e) { alertLine(`Not sent: ${e.message}`); }
 }
 
 async function answerText(id, text) {
@@ -538,6 +618,7 @@ const ACTIONS = {
   visual: { label: 'Show visual', busy: 'Asking…', pending: 'visual requested', working: 'drawing visual…' },
   explain: { label: 'Explain more', busy: 'Asking…', pending: 'explaining…', working: 'explaining…' },
   probe: { label: 'Run a probe', busy: 'Asking…', pending: 'probe requested', working: 'probe requested' },
+  park: { label: 'Park branch', busy: 'Asking…', pending: 'parking…', working: 'parking…' },
 };
 
 function pendingRequests(qid) {
@@ -794,6 +875,14 @@ $('#side-toggle').addEventListener('click', () => setLeft($('.app').classList.co
 setLeft(store('leftShown') !== false);
 
 // ------------------------------------------------------------------ wiring
+
+// only the frame on the stage may report
+window.addEventListener('message', e => {
+  const frame = $('#stage iframe');
+  if (!frame || e.source !== frame.contentWindow || e.data?.type !== 'grill-deck-lint') return;
+  const problems = (e.data.problems || []).map(String).slice(0, 5);
+  if (problems.length) post('/api/visual-lint', { for: frame.dataset.qid, vid: frame.dataset.vid, problems }).catch(() => {});
+});
 
 $('#mic').addEventListener('click', () => (mic.on ? micStop() : micStart()));
 $('#send').addEventListener('click', sendAnswers);

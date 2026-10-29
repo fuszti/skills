@@ -44,6 +44,21 @@ MAX_BODY = 25 * 1024 * 1024
 STYLE_KEYS = ("theme", "accent", "radius", "density", "font")
 # Whisper says these on near-silence; alone they are noise, never an answer
 HALLUCINATIONS = {"thank you.", "thank you", "thanks for watching!", "you", ".", "köszönöm.", "köszönöm", "bye."}
+# YouTube-subtitle phrases Whisper invents on noise, in any length of utterance
+HALLUCINATION_RE = re.compile(
+    r"subscribe|thanks for watching|thank you for watching|see you in the next video|amara\.org|"
+    r"ご視聴|次回予告|字幕|feliratozta|feliratok|untertitel",
+    re.I,
+)
+# a lone short answer that can settle a card, so it is never dropped as a filler
+SHORT_ANSWERS = {
+    "yes", "no", "yeah", "nope", "ok", "okay", "sure", "igen", "nem", "jó", "oké", "persze",
+    "option", "first", "second", "third", "one", "two", "three", "four", "five", "both", "neither", "none",
+    "a", "b", "c", "d", "e", "1", "2", "3", "4", "5", "első", "második", "harmadik", "mindkettő", "egyik",
+}
+STREAK_GAP = 60  # seconds: a recommended pick this soon after the previous answer counts toward the streak
+STREAK_GUARD = 5  # after this many fast recommended picks the deck asks for a reason
+VERDICTS = ("killed", "changed", "confirmed", "inconclusive")
 JUDGE_SYSTEM = (
     "You watch a live design interview. The user answers open questions by speaking; a speech-to-text model writes "
     "each utterance, with errors, in English, Hungarian or both. Decide whether the user has finished a thought that "
@@ -98,6 +113,19 @@ def apply_update(tree, u):
     t = copy.deepcopy(tree)
     if u.get("title"):
         t["title"] = u["title"]
+    if u.get("depth"):
+        level = u["depth"].get("level")
+        if level not in ("full", "rfc", "park"):
+            raise ValueError("depth.level must be full, rfc or park")
+        t["depth"] = {**t.get("depth", {}), **u["depth"]}
+    for f in u.get("followups", []):
+        ex = next((x for x in t.setdefault("followups", []) if x["id"] == f.get("id")), None)
+        if ex:
+            ex.update(f)
+        elif not (f.get("id") and f.get("title")):
+            raise ValueError("a follow-up needs an id and a title")
+        else:
+            t["followups"].append({"topic": "", "facts": [], **f})
     for topic in u.get("topics", []):
         ex = next((x for x in t["topics"] if x["id"] == topic["id"]), None)
         if ex:
@@ -135,6 +163,8 @@ def apply_update(tree, u):
         for p in d.get("prereqs", []):
             if p not in ids:
                 raise ValueError(f"decision {d['id']} names unknown prerequisite {p}")
+        if d.get("confirms") and d["confirms"] not in ids:
+            raise ValueError(f"decision {d['id']} confirms unknown decision {d['confirms']}")
         n = len(d.get("options") or [])
         ro = d.get("recommendedOption")
         if ro is not None and not 0 <= ro < n:
@@ -194,6 +224,9 @@ class Deck:
         if title:
             self.s["title"] = title
         self.s.setdefault("requests", [])
+        self.s.setdefault("answers", [])
+        self.s.setdefault("followups", [])
+        self.s.setdefault("outcomes", [])
         # sessions from before multi-visual kept one {file, title} per question
         for qid, v in list(self.s["visuals"].items()):
             if isinstance(v, dict):
@@ -218,17 +251,25 @@ class Deck:
             self.s["requests"] = [r for r in self.s["requests"] if r["state"] != "done" and now - r["at"] < 1200]
             out = copy.deepcopy(self.s)
         out["server"] = {"session": bool(self.session), "countdown": self.cfg["send_countdown"], "now": time.time()}
+        out["guard"] = {"streak": rec_streak(out["answers"]), "limit": STREAK_GUARD}
+        out["budget"] = {
+            "probes": sum(1 for p in out["processes"] if p["kind"] in ("web", "code", "probe")),
+            "maxProbes": out.get("depth", {}).get("maxProbes"),
+            "maxRounds": out.get("depth", {}).get("maxRounds"),
+        }
         return out
 
     # --- tree, processes, visuals (from deck.py)
 
     def update_tree(self, u):
         with self.lock:
-            tree = {k: self.s[k] for k in ("title", "round", "topics", "decisions")}
+            tree = {
+                k: self.s[k] for k in ("title", "round", "topics", "decisions", "depth", "followups") if k in self.s
+            }
             tree = apply_update(tree, u)
             self.s.update(tree)
             for d in u.get("decisions", []):
-                self.resolve(d["id"], ("explain",))
+                self.resolve(d["id"], ("explain", "park"))
             self.save()
             return {"round": self.s["round"], "frontier": [d["id"] for d in frontier(self.s)]}
 
@@ -269,6 +310,11 @@ class Deck:
                 for k in ("status", "progress", "title"):
                     if p.get(k) is not None:
                         ex[k] = p[k]
+                if op == "done" and ex["kind"] in ("web", "code", "probe") and not p.get("failed"):
+                    # the verdict makes probe value countable in a retro: what did this fact do to the card?
+                    if p.get("verdict") not in VERDICTS:
+                        raise ValueError(f"{pid} is {ex['kind']}: done needs --verdict {'|'.join(VERDICTS)}")
+                    ex["verdict"] = p["verdict"]
                 if op == "done":
                     ex["state"] = "failed" if p.get("failed") else "done"
                     ex["ended"] = time.time()
@@ -325,15 +371,45 @@ class Deck:
                 d["text"] = a["text"][:4000]
             d["status"] = "answered" if (d.get("choices") or d.get("text")) else "open"
             d["sent"] = False
+            if a.get("send") and d["status"] == "answered":
+                self.s["answers"].append(
+                    {
+                        "id": d["id"],
+                        "at": time.time(),
+                        "rec": not d.get("multi") and d.get("choices") == [d.get("recommendedOption")],
+                        "typed": bool(d.get("text")),
+                    }
+                )
             self.save()
             if a.get("send") and d["status"] == "answered":
                 return self.send_all()
             return {"ok": True}
 
+    def accept_defaults(self, a):
+        """One click accepts the recommendation on every low-stake default card of the frontier."""
+        with self.lock:
+            ids = set(a.get("ids") or [])
+            picked = [
+                d
+                for d in frontier(self.s)
+                if d["id"] in ids
+                and d.get("default")
+                and d.get("stake") != "high"
+                and d["status"] == "open"
+                and d.get("recommendedOption") is not None
+            ]
+            if not picked:
+                raise ValueError("no open default card to accept")
+            for d in picked:
+                d.update(choices=[d["recommendedOption"]], text="", status="answered", sent=False)
+            self.save()
+        return self.send_all()
+
     # --- voice
 
     def utterance(self, text, seconds):
         with self.lock:
+            dropped = noise(text, bool(frontier(self.s)))
             self.s["transcript"].append(
                 {
                     "id": len(self.s["transcript"]) + 1,
@@ -341,8 +417,13 @@ class Deck:
                     "at": time.time(),
                     "seconds": round(seconds, 1),
                     "sent": False,
+                    **({"dropped": dropped} if dropped else {}),
                 }
             )
+            if dropped:
+                # noise never wakes the judge or Claude; the page offers "Send anyway"
+                self.save()
+                return
             self.cancel_countdown(save=False)
             self.s["pending"] = {"state": "judging"}
             self.judge_gen += 1
@@ -352,7 +433,7 @@ class Deck:
 
     def run_judge(self, gen):
         with self.lock:
-            lines = [t["text"] for t in self.s["transcript"] if not t["sent"]][-8:]
+            lines = [t["text"] for t in self.s["transcript"] if not t["sent"] and not t.get("dropped")][-8:]
             cards = [f"{d['id']}: {d['title']}" for d in frontier(self.s)]
         try:
             finished = judge(self.cfg["judge_model"], lines, cards, self.root)
@@ -395,12 +476,21 @@ class Deck:
             self.cancel_countdown()
             return {"ok": True}
 
+    def keep(self, k):
+        """ "Send anyway" on a line the noise filter dropped: it goes to Claude now."""
+        with self.lock:
+            t = next((x for x in self.s["transcript"] if x["id"] == k.get("id")), None)
+            if t is None or not t.get("dropped"):
+                raise ValueError(f"no dropped line {k.get('id')}")
+            t.pop("dropped")
+        return self.send_all()
+
     def send_all(self, typed=""):
         """Everything the user gave since the last send, as one message: card answers, talk, typed text."""
         with self.lock:
             self.cancel_countdown(save=False)
             cards = [d for d in self.s["decisions"] if d["status"] == "answered" and not d.get("sent")]
-            talk = [t for t in self.s["transcript"] if not t["sent"]]
+            talk = [t for t in self.s["transcript"] if not t["sent"] and not t.get("dropped")]
             if not cards and not talk and not typed:
                 self.s["pending"] = {"state": "idle", "note": "nothing to send"}
                 self.save()
@@ -474,7 +564,12 @@ class Deck:
         return self.send_all(typed=text)
 
     def request(self, r):
-        kinds = {"visual": "draw a visual for it", "explain": "explain it more", "probe": "run a probe for it"}
+        kinds = {
+            "visual": "draw a visual for it",
+            "explain": "explain it more",
+            "probe": "run a probe for it",
+            "park": "park this branch as a follow-up ticket",
+        }
         if r.get("kind") not in kinds:
             raise ValueError("unknown request")
         msg = f"[grill-deck {self.s['slug']}] {r['id']}: {kinds[r['kind']]}. Follow the grill-deck skill."
@@ -485,6 +580,32 @@ class Deck:
             self.save()
         self.deliver(msg)
         return {"ok": True}
+
+    def visual_lint(self, v):
+        """The lint script inside a visual found a problem: mark the tab and ask Claude to replace it, once per file."""
+        problems = [str(x)[:200] for x in (v.get("problems") or [])][:5]
+        with self.lock:
+            ex = next((x for x in self.s["visuals"].get(v.get("for"), []) if x["id"] == v.get("vid")), None)
+            if ex is None or not problems or ex.get("lint", {}).get("file") == ex["file"]:
+                return {"ok": True}
+            ex["lint"] = {"file": ex["file"], "problems": problems}
+            self.save()
+        msg = (
+            f"[grill-deck {self.s['slug']}] {v['for']}: visual {v['vid']} ({ex['title']}) failed its check: "
+            + "; ".join(problems)
+            + f". Fix it with `visual replace {v['for']} {v['vid']}`. Follow the grill-deck skill."
+        )
+        self.deliver(msg)
+        return {"ok": True}
+
+    def outcome(self, o):
+        """After the merge: what happened to one decision, or a review point the deck never asked."""
+        if o.get("result") not in ("followed", "diverged", "added"):
+            raise ValueError("result must be followed, diverged or added")
+        with self.lock:
+            self.s["outcomes"].append({**o, "at": time.time()})
+            self.save()
+            return {"count": len(self.s["outcomes"])}
 
     def session_status(self):
         """agent-deck says `running` while the session works and `waiting`/`idle` while it waits for the user."""
@@ -527,6 +648,30 @@ class Deck:
             except Exception as exc:
                 sys.stderr.write(f"session poll failed: {exc}\n")
             time.sleep(float(self.cfg["poll_seconds"]))
+
+
+def rec_streak(answers):
+    """Recommended picks in a row, each sent soon after the one before it: the sign of a rubber stamp."""
+    n, after = 0, None
+    for a in reversed(answers):
+        if not a["rec"] or a["typed"] or (after is not None and after - a["at"] > STREAK_GAP):
+            break
+        n, after = n + 1, a["at"]
+    return n
+
+
+def noise(text, cards_open):
+    """Why a transcribed line is noise ("hallucination" or "filler"), or "" when it is real input."""
+    words = re.findall(r"\w+", text.lower())
+    if HALLUCINATION_RE.search(text):
+        return "hallucination"
+    # Whisper loops on noise: the same 3-word phrase three times or more
+    grams = [" ".join(words[i : i + 3]) for i in range(len(words) - 2)]
+    if grams and max(grams.count(g) for g in set(grams)) >= 3:
+        return "hallucination"
+    if len(words) <= 3 and not (cards_open and set(words) & SHORT_ANSWERS):
+        return "filler"
+    return ""
 
 
 def judge(model, lines, cards, cwd):
@@ -632,7 +777,11 @@ def make_handler(deck):
                 f = os.path.join(visuals, name)
                 if not os.path.isfile(f):
                     return self.reply(HTTPStatus.NOT_FOUND, {"error": "not_found"})
-                return self.reply(HTTPStatus.OK, open(f, encoding="utf-8").read(), "text/html; charset=utf-8")
+                lint = '<script src="/visual-lint.js"></script>'
+                html, n = re.subn(r"</body>", lint + "</body>", open(f, encoding="utf-8").read(), count=1, flags=re.I)
+                if not n:
+                    html += lint
+                return self.reply(HTTPStatus.OK, html, "text/html; charset=utf-8")
             return super().do_GET()
 
         def do_POST(self):
@@ -661,6 +810,10 @@ def make_handler(deck):
                     "/api/request": deck.request,
                     "/api/send": lambda d: deck.send_all(),
                     "/api/undo": lambda d: deck.undo(),
+                    "/api/keep": deck.keep,
+                    "/api/defaults": deck.accept_defaults,
+                    "/api/visual-lint": deck.visual_lint,
+                    "/api/outcome": deck.outcome,
                 }
                 if path not in routes:
                     return self.reply(HTTPStatus.NOT_FOUND, {"error": "not_found"})

@@ -34,18 +34,52 @@ Finding facts is your job, never the user's. Decisions are the user's: put each 
    [agent-deck](https://github.com/asheshgoplani/agent-deck) (`$AGENTDECK_INSTANCE_ID` or `--session`). Else it
    prints `(none: messages go to outbox.jsonl)`. Then start `$D inbox --wait` in the background (Bash
    `run_in_background`). It exits with the user's message. Act on it, then start it again.
-4. Send the first round (below), then tell the user the URL in one line.
+4. Run `$D lessons`. It lists the review points that earlier decks missed, by class. Keep them in mind for this
+   tree: they are the questions this user's reviewers ask.
+5. Send the first round (see "Round 1" below), then tell the user the URL in one line.
 
 `$D` below stands for `python3 <grill-deck base directory>/scripts/deck.py ~/.grill-deck/<slug>`. Write it out in
 full in every command, and tell sub-agents the full form too: shell variables do not survive between Bash calls, and
 zsh does not split a `$D` variable into words.
+
+## Round 1
+
+Users had to ask for the same topics in most past sessions, and reviewers raised facts that nobody looked for. So
+the first round always holds three things:
+
+1. **The depth card** (`q1`): "How deep should we go?" with the options "Full depth (ships soon)", "Design only
+   (RFC)" and "Park it". Base the recommendation on the ticket's priority, estimate and sprint. When it is settled,
+   send `depth: {"level": "full|rfc|park", "maxRounds": N, "maxProbes": N}` (for example 25/20, 12/8, 3/2). The
+   header shows the budget. `proc add` warns when research goes over it. Over budget, prefer to park a branch.
+2. **The skeleton topics**, each with `skeleton: true`. Add your subject's own topics next to them:
+
+   | id | title | what it asks |
+   |---|---|---|
+   | `goal` | Goal | what outcome this serves and for whom; the question before question one |
+   | `behavior` | Behavior | what the user or system does, the main path and the edge cases |
+   | `architecture` | Architecture and data | components, data model, contracts |
+   | `neighbors` | Neighbors and lifecycle | existing operations on the same entities (delete, merge, move, export), limits, other teams' in-flight work |
+   | `delivery` | Delivery split | how many PRs, in what order, what the teammates see |
+   | `verification` | Verification | how the human proves it works, on real infrastructure, and who checks what |
+   | `rollout` | Rollout | release timing, flags, migration, what happens to existing data |
+
+   Each skeleton topic needs at least one card, or one settled card `answer: "n/a: <why>"`. `$D check` refuses Done
+   until each has one.
+3. **The scan**: two background agents (`--kind scan`) with `reference/scan-agent.md`. They look
+   for the world outside the ticket: meetings, chat threads, tickets and open PRs that touch the same entities,
+   screens or tables. Each hit becomes a fact in a card body or a new card ("A customer asked for personal tasks on
+   Oct 21: in scope?").
 
 ## The tree
 
 Send it with `$D update` and a JSON document on stdin (`$D update <<'EOF' … EOF`). Every update may carry:
 
 - `title`: the session title.
-- `topics`: `{id, title, angle}`. `angle` is one line on what the topic is about and why it matters now.
+- `topics`: `{id, title, angle}`. `angle` is one line on what the topic is about and why it matters now. Add
+  `skeleton: true` to the skeleton topics.
+- `depth`: the budget from the depth card (see "Round 1").
+- `followups`: `{id, title, topic, facts: [...]}` for a parked branch. The deck lists it under Settled, and
+  `export` writes it as a follow-up ticket.
 - `decisions`: the questions.
   - `id` (`q1`, `q2`, … never reused), `topic`, `title` (≤ 8 words, a question).
   - `body`: the context only, 1–3 short sentences. Never list the options in it.
@@ -54,6 +88,13 @@ Send it with `$D update` and a JSON document on stdin (`$D update <<'EOF' … EO
   - `recommendation`: the short reason for your pick.
   - `flip`: what would change your recommendation, one line (a fact, a constraint, a number).
   - `stake: "high"` for a decision that is hard to undo.
+  - `counter`: the strongest argument against your recommendation, one line. Give it on every card with options.
+    The deck shows it on high-stake cards, and on every card after the user accepted 5 recommendations in a row
+    within a minute each. Then it also asks the user for a one-line reason.
+  - `default: true` for a low-stake card where your recommendation is a safe default. With two or more of them on
+    the frontier, the deck offers "Accept all N recommendations", so attention goes to the cards that matter.
+  - `verify`: how to check this decision in the built code, one line. `export` writes it into the ledger.
+  - `confirms`: the id of the decision whose answer this card confirms (see "Answers arrive", step 2).
   - `prereqs`: ids that must be settled first. A card shows once all its prereqs are settled.
   - `status`: `open` (default), `settled` with `answer` (the decision as you understood it, one line).
 
@@ -93,22 +134,29 @@ sent card that does not settle it reopens it (back to the frontier, the user's p
    typed text clearly answer, fold partial information into bodies and recommendations, open the decisions the input
    raises, settle moot ones (`answer: "moot: <why>"`), and add the next frontier. Typed text that asks you something
    instead: answer it in chat (the deck's session card shows your reply) and still update what it changes.
-2. An unclear or contradicting answer: keep the decision `open`, put the follow-up into its `body`, say so in your
-   one line.
+2. An unclear or contradicting answer (the typed text names one option, the words describe another): keep the
+   decision `open` and add a **confirm card** with `confirms: "<id>"`, `stake: "high"` and the two readings as
+   options, so the answer is one click. Never only a note in the body: `check` and `export` refuse while a card is
+   answered but not settled, so a silent open question cannot reach the RFC.
 3. Free talk is speech-to-text: expect errors, Hungarian and English mixed, half sentences. Read it charitably and
-   never ask the user to repeat what you can infer. A lone short filler ("Thank you.", "Köszönöm.") may be a Whisper
-   hallucination: never settle a decision from it alone.
+   never ask the user to repeat what you can infer. The server drops known Whisper hallucinations ("subscribe",
+   subtitle credits, a phrase repeated 3 times) and fillers of 3 words or fewer before they reach you. The user can
+   still click "Send anyway". A short filler that reaches you is still never enough to settle a decision.
 
 Other deck messages:
 - `[grill-deck <slug>] q3: explain it more` → reword q3's body and recommendation in an update; add a visual if it
   would help.
 - `… q3: draw a visual for it` → dispatch a visual agent for q3 (below).
 - `… q3: run a probe for it` → dispatch a probe for q3 (below).
+- `… q3: park this branch as a follow-up ticket` → in one update, settle q3 and its open children in the same
+  branch with `answer: "moot: parked → <follow-up id>"`, and add a `followups` entry with the facts found so far.
+- `… q3: visual v4 (…) failed its check: …` → the visual has a mermaid error or unreadable text. Dispatch a visual
+  agent to `visual replace q3 v4`.
 
 Each of these puts a chip on the card ("explaining…", "visual requested", "probe requested") until you act, so act
 in a way the deck can see: "explain" ends with an update that includes q3; "visual" moves to "drawing visual…" when
 the agent runs `proc add --kind visual --for q3` and ends with `visual add|replace q3`; "probe" ends with
-`proc add --kind probe --for q3`. A request you do not act on stays on the card for 20 minutes.
+`proc add --kind probe --for q3`. "park" ends with an update that includes q3. A request you do not act on stays on the card for 20 minutes.
 
 ## Facts: research and probes
 
@@ -125,7 +173,16 @@ $D proc done $P --status "3 readers, all admin-only"   # or --failed
 - `probe`: a code experiment that tries something out. A probe works in a throwaway git worktree or a scratch folder
   under `~/.grill-deck/<slug>/probes/`, never in the user's working tree, and never pushes, deploys or changes shared
   state.
-- Tell each agent: the question id, the exact fact needed, the `$D` commands above, and to return a 3–6 line result.
+- Tell each agent: the question id, the exact fact needed, **which option(s) the fact can kill**, the `$D`
+  commands above, and to return a 3–6 line result.
+- Each agent ends with `$D proc done $P --verdict killed|changed|confirmed|inconclusive`: what the fact did to the
+  card. The server refuses `done` without a verdict for `web`, `code` and `probe`.
+- Ask for one fact, as a number or a yes/no. The probes that changed decisions answered one question the user asked,
+  on real data, within a few minutes. Dispatch a probe when the user asks a question aloud that data can answer.
+- A fact about cloud or service behavior runs on the real target (a dev account, a scratch prefix, cleaned up
+  afterwards), never only on a mock or emulator: a mock can accept what the real service rejects.
+- A decision that **enforces** something (a deny rule, an IAM policy, a guardrail, a proof step) gets a feasibility
+  probe before it settles: can it be done, and who else does it bind?
 - When it reports, fold the fact into the card in an update (body, recommendation, `flip`), and settle nothing for the
   user.
 
@@ -139,7 +196,8 @@ After each update, dispatch one background visual agent per new decision whose a
 a flow or sequence, a state machine, components and their links, a timeline, a data layout, or a side-by-side of the
 options. Never for a pure preference question. One agent per visual; a question that needs two views gets two agents.
 Give each agent `reference/visual-agent.md` (read it, then pass its rules in the prompt), the decision JSON, the
-facts you know, and the tab title. Use a fast model (`model: "sonnet"`). It registers as `--kind visual --for q3`
+facts you know, and the tab title. For a card about a screen, tell the agent where the frontend is: it shows the
+real app with mock data first, and draws a schematic only when that fails. Use a fast model (`model: "sonnet"`). It registers as `--kind visual --for q3`
 (the tab shows "drawing" meanwhile) and ends with `$D visual add q3 <file.html> --title "<tab title>"`.
 
 ```bash
@@ -148,13 +206,40 @@ $D visual replace q3 v4 <file.html>                # a better version of one tab
 $D visual remove q3 v4                             # a tab that is wrong or obsolete
 ```
 
-When a fact or an answer changes what a visual shows, replace that tab instead of adding another one.
+When a fact or an answer changes what a visual shows, replace that tab instead of adding another one. Every visual
+gets a small check script: a mermaid error or text below 4.5:1 marks the tab "fixing" and sends you a message.
 
 ## Done
 
-The session is done when the frontier is empty: every branch visited, nothing silently assumed. Then summarize the
-shared understanding in chat (settled decisions grouped by topic) and ask the user to confirm. Do not act on the plan
-until they confirm. Leave the server running until the user closes it; it keeps the tree in `state.json`.
+When the frontier is empty:
+
+1. **Reviewer pre-mortem.** Dispatch one agent (`model: "opus"`, `--kind review`) with
+   `reference/reviewer-agent.md` and the settled tree (`$D export --force --out <scratch>/draft.md`). It reads the
+   repo rules and the recent human review comments of the team, runs a blast-radius probe, and returns the review
+   points a reviewer would raise. Each point becomes a card. When none is left, it finishes with `proc done`.
+2. `$D check` must print "ready for Done". It blocks on open or answered-but-unsettled cards, skeleton topics
+   without a settled card, and a missing review.
+3. `$D export` writes `ledger.md` (numbered decisions with `verify`, plus the follow-ups) and `ledger.json`. Tell
+   the user to cite the ids (q3, q7) in the RFC and the PR body.
+4. `$D clean-probes` deletes dependency folders under `probes/` and lists the probe worktrees to remove.
+5. Summarize the shared understanding in chat (settled decisions grouped by topic) and ask the user to confirm. Do
+   not act on the plan until they confirm. Leave the server running until the user closes it; it keeps the tree in
+   `state.json`.
+
+## After the merge
+
+When the PR that implements the ledger merges, or when the user asks for a retro, dispatch one agent that compares
+the PR diff and its human review threads with `ledger.json`. It records one outcome per decision and one per review
+point the deck never asked (no server needed):
+
+```bash
+$D outcome q7 --result followed --pr 541
+$D outcome q9 --result diverged --pr 563 --note "deny rules would bind every developer"
+$D outcome - --result added --class missed-constraint --pr 541 --note "project merge cascade-deletes tasks"
+```
+
+Classes: `missed-constraint`, `missed-decision`, `naming-ux`, `test-qa`, `ops-deploy`, `scope`, `other`. The next
+session reads them with `$D lessons`.
 
 ## Configuration
 
@@ -196,3 +281,9 @@ keys are optional. The comments below explain the keys; the real file is plain J
 | Server started from another shell | start it from this session: messages go to `$AGENTDECK_INSTANCE_ID`, else to `outbox.jsonl` |
 | No agent-deck and no `inbox --wait` running | the user's answers wait in `outbox.jsonl`; start `$D inbox --wait` in the background again after each message |
 | `deck.py`: "no server" | start `serve.py` again with the same folder; the tree is kept |
+| The user adds "don't forget the verification plan" | the skeleton topics were missing from round 1 |
+| A contradiction kept as a note in `body` | a confirm card with the two readings as options |
+| A probe that ends without `--verdict` | killed, changed, confirmed or inconclusive |
+| A cloud fact proven only on a mock | run it on the real target with a scratch prefix |
+| Grilling every child of a branch the user wants to defer | "park" it as a follow-up |
+| Done without the reviewer pre-mortem | `check` refuses it; run the review agent |

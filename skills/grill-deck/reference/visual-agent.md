@@ -16,6 +16,11 @@ Pick the one form that shows the decision:
 | a stored layout | the table or key layout, before → after |
 | two or three options | the options side by side, with what each one changes |
 
+**A question about a screen** shows the real app first. Users decided UI questions from real screens, not from
+schematics. Run the frontend with mock data in a throwaway worktree, take a Playwright screenshot of each option at
+1440 px, and embed the PNGs (`<img src="data:image/png;base64,…">`) side by side. Draw a schematic only when the app
+does not start; then say so in the subtitle.
+
 Show the options of the question where they differ. Mark the recommended option with the accent color and the word
 "recommended", never with color alone. Use the real names (functions, tables, routes) from the facts you were given;
 never invent a name. A fact you do not have becomes a visible placeholder like `[row count]`.
@@ -41,6 +46,9 @@ One self-contained HTML file:
 - It runs in a sandboxed iframe that fills the panel (about 800×600 px). Fit that size; scroll only when the content
   needs it. Text at least 12 px, contrast at least 4.5:1.
 - A title (≤ 8 words) and one line under it that says what to look at.
+- Before `visual add`, check the mermaid source (each node id once, labels with `(`, `)` or `:` in quotes) and the
+  colors (body text uses `--text`; `--muted` only for captions on `--bg` or `--panel`). The deck runs a check script
+  in every visual. A mermaid error or text below 4.5:1 sends the question back for a `visual replace`.
 
 ## Steps
 
