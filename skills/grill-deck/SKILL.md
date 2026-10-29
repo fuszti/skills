@@ -223,8 +223,9 @@ When the frontier is empty:
    the user to cite the ids (q3, q7) in the RFC and the PR body.
 4. `$D clean-probes` deletes dependency folders under `probes/` and lists the probe worktrees to remove.
 5. Summarize the shared understanding in chat (settled decisions grouped by topic) and ask the user to confirm. Do
-   not act on the plan until they confirm. Leave the server running until the user closes it; it keeps the tree in
-   `state.json`.
+   not act on the plan until they confirm.
+6. When the user confirms, run `$D stop`. The server holds the Whisper model (2–4 GB) until it stops. The tree
+   stays in `state.json`, and `serve.py` with the same folder opens it again.
 
 ## After the merge
 
@@ -260,7 +261,9 @@ keys are optional. The comments below explain the keys; the real file is plain J
   },
   "whisper_model": "mlx-community/whisper-large-v3-turbo",
   "judge_model": "haiku",
-  "send_countdown": 3.0
+  "send_countdown": 3.0,
+  "stop_without_page_minutes": 10,  // no open deck page this long → the server stops (0: never)
+  "stop_idle_minutes": 120          // no answer, click or update this long → the server stops (0: never)
 }
 ```
 

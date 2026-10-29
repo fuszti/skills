@@ -38,6 +38,9 @@ DEFAULTS = {
     "judge_model": "haiku",
     "send_countdown": 3.0,
     "poll_seconds": 2.0,
+    # the Whisper model holds 2-4 GB, so a forgotten deck must not keep it; 0 turns a limit off
+    "stop_without_page_minutes": 10,
+    "stop_idle_minutes": 120,
     "style": {},
 }
 MAX_BODY = 25 * 1024 * 1024
@@ -234,6 +237,7 @@ class Deck:
         self.s["pending"] = {"state": "idle"}
         self.judge_gen = 0
         self.timer = None
+        self.last_page = self.last_input = time.time()
         self.outbox = queue.Queue()
         threading.Thread(target=self.deliver_worker, daemon=True).start()
 
@@ -495,6 +499,7 @@ class Deck:
                 self.s["pending"] = {"state": "idle", "note": "nothing to send"}
                 self.save()
                 return {"sent": False}
+            self.last_input = time.time()
             msg = f"[grill-deck {self.s['slug']}] Input (round {self.s['round']}):"
             if cards:
                 msg += "\n\nCard answers:\n" + "\n".join(f"- {d['id']} {d['title']}: {describe(d)}" for d in cards)
@@ -650,6 +655,26 @@ class Deck:
             time.sleep(float(self.cfg["poll_seconds"]))
 
 
+    def stop(self, reason):
+        print(f"stopping: {reason}. The tree stays in state.json; serve.py with the same folder reopens it.", flush=True)
+        # shutdown() waits for serve_forever, so it cannot run on a request thread
+        threading.Thread(target=self.server.shutdown, daemon=True).start()
+        return {"stopped": True}
+
+    def watchdog(self):
+        no_page = float(self.cfg["stop_without_page_minutes"]) * 60
+        idle = float(self.cfg["stop_idle_minutes"]) * 60
+        while True:
+            time.sleep(30)
+            if not self.outbox.empty():
+                continue
+            now = time.time()
+            if no_page and now - self.last_page > no_page:
+                return self.stop(f"no page open for {no_page / 60:g} min")
+            if idle and now - self.last_input > idle:
+                return self.stop(f"no input for {idle / 60:g} min")
+
+
 def rec_streak(answers):
     """Recommended picks in a row, each sent soon after the one before it: the sign of a rubber stamp."""
     n, after = 0, None
@@ -769,6 +794,7 @@ def make_handler(deck):
         def do_GET(self):
             path = urlparse(self.path).path
             if path == "/api/state":
+                deck.last_page = time.time()
                 return self.reply(HTTPStatus.OK, deck.snapshot())
             if path == "/theme.css":
                 return self.reply(HTTPStatus.OK, theme_css(load_config()["style"]), "text/css; charset=utf-8")
@@ -790,6 +816,9 @@ def make_handler(deck):
             if not 0 < size <= MAX_BODY:
                 return self.reply(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "size"})
             body = self.rfile.read(size)
+            if path not in ("/api/utterance", "/api/partial"):
+                # mic noise reaches /api/utterance all the time; real speech counts when send_all sends it
+                deck.last_input = time.time()
             try:
                 if path == "/api/utterance":
                     text, seconds = transcribe(deck.cfg["whisper_model"], body)
@@ -814,6 +843,7 @@ def make_handler(deck):
                     "/api/defaults": deck.accept_defaults,
                     "/api/visual-lint": deck.visual_lint,
                     "/api/outcome": deck.outcome,
+                    "/api/stop": lambda d: deck.stop("stop requested"),
                 }
                 if path not in routes:
                     return self.reply(HTTPStatus.NOT_FOUND, {"error": "not_found"})
@@ -860,15 +890,21 @@ def main():
             continue
     else:
         raise SystemExit(f"no free port in {port}-{port + 19}")
-    with open(os.path.join(root, "server.json"), "w") as f:
+    deck.server = srv
+    info = os.path.join(root, "server.json")
+    with open(info, "w") as f:
         json.dump({"port": candidate, "pid": os.getpid()}, f)
     url = f"http://localhost:{candidate}/"
     print(f"deck: {url}  session: {session or '(none: messages go to outbox.jsonl)'}", flush=True)
     threading.Thread(target=warmup, args=(cfg["whisper_model"],), daemon=True).start()
     threading.Thread(target=deck.poll_session, daemon=True).start()
+    threading.Thread(target=deck.watchdog, daemon=True).start()
     if "--no-open" not in args:
         webbrowser.open(url)
-    srv.serve_forever()
+    try:
+        srv.serve_forever()
+    finally:
+        os.remove(info)
 
 
 if __name__ == "__main__":
