@@ -17,8 +17,8 @@ Pick the one form that shows the decision:
 | two or three options | the options side by side, with what each one changes |
 
 **A question about a screen** shows the real app first. Users decided UI questions from real screens, not from
-schematics. Run the frontend with mock data in a throwaway worktree, take a Playwright screenshot of each option at
-1440 px, and embed the PNGs (`<img src="data:image/png;base64,…">`) side by side. Draw a schematic only when the app
+schematics. Run the frontend with mock data in a throwaway worktree, as the repo settings' `## Visuals` say, take a
+Playwright screenshot of each option (at 1440 px when they name no viewport), and embed the PNGs (`<img src="data:image/png;base64,…">`) side by side. Draw a schematic only when the app
 does not start; then say so in the subtitle.
 
 Show the options of the question where they differ. Mark the recommended option with the accent color and the word

@@ -41,35 +41,44 @@ DEFAULTS = {
     # the Whisper model holds 2-4 GB, so a forgotten deck must not keep it; 0 turns a limit off
     "stop_without_page_minutes": 10,
     "stop_idle_minutes": 120,
+    "voice_languages": ["en"],
+    "languages": {},
+    "streak_guard": 5,
+    "streak_gap_seconds": 60,
     "style": {},
 }
 MAX_BODY = 25 * 1024 * 1024
 STYLE_KEYS = ("theme", "accent", "radius", "density", "font")
-# Whisper says these on near-silence; alone they are noise, never an answer
-HALLUCINATIONS = {"thank you.", "thank you", "thanks for watching!", "you", ".", "köszönöm.", "köszönöm", "bye."}
-# YouTube-subtitle phrases Whisper invents on noise, in any length of utterance
-HALLUCINATION_RE = re.compile(
-    r"subscribe|thanks for watching|thank you for watching|see you in the next video|amara\.org|"
-    r"ご視聴|次回予告|字幕|feliratozta|feliratok|untertitel",
-    re.I,
-)
-# a lone short answer that can settle a card, so it is never dropped as a filler
-SHORT_ANSWERS = {
-    "yes", "no", "yeah", "nope", "ok", "okay", "sure", "igen", "nem", "jó", "oké", "persze",
-    "option", "first", "second", "third", "one", "two", "three", "four", "five", "both", "neither", "none",
-    "a", "b", "c", "d", "e", "1", "2", "3", "4", "5", "első", "második", "harmadik", "mindkettő", "egyik",
-}
-STREAK_GAP = 60  # seconds: a recommended pick this soon after the previous answer counts toward the streak
-STREAK_GUARD = 5  # after this many fast recommended picks the deck asks for a reason
 VERDICTS = ("killed", "changed", "confirmed", "inconclusive")
-JUDGE_SYSTEM = (
-    "You watch a live design interview. The user answers open questions by speaking; a speech-to-text model writes "
-    "each utterance, with errors, in English, Hungarian or both. Decide whether the user has finished a thought that "
-    "should be sent to the interviewer now. Not finished: the last utterance stops mid-sentence, ends on a connective "
-    "(and, but, so, because, és, de, mert), announces more ('first', 'two things'), or is a list that is not complete. "
-    "Finished: a complete answer, opinion, decision or question. Reply with JSON only: "
-    '{"finished": true} or {"finished": false}.'
-)
+
+
+def load_languages(cfg):
+    """Merge the packs of the configured voice languages (languages.json plus the user's own) into one filter set."""
+    packs = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "languages.json")))
+    for code, pack in cfg["languages"].items():
+        packs[code] = {**packs.get(code, {}), **pack}
+    picked = [packs["any"]] + [packs[c] for c in cfg["voice_languages"] if c in packs]
+    words = lambda key: {w for p in picked for w in p.get(key, [])}  # noqa: E731
+    patterns = words("hallucination_patterns")
+    connectives = ", ".join(sorted(words("connectives")))
+    names = " or ".join(p["name"] for p in picked if "name" in p) or "any language"
+    return {
+        # Whisper says these on near-silence; alone they are noise, never an answer
+        "hallucinations": words("hallucinations"),
+        # subtitle-credit phrases Whisper invents on noise, in any length of utterance
+        "hallucination_re": re.compile("|".join(sorted(patterns)), re.I) if patterns else None,
+        # a lone short answer that can settle a card, so it is never dropped as a filler
+        "short_answers": words("short_answers"),
+        "judge_system": (
+            "You watch a live design interview. The user answers open questions by speaking; a speech-to-text model "
+            f"writes each utterance, with errors, in {names}, possibly mixed. Decide whether the user has finished a "
+            "thought that should be sent to the interviewer now. Not finished: the last utterance stops mid-sentence, "
+            f"ends on a connective ({connectives}), announces more ('first', 'two things'), or is a list that is not "
+            "complete. Finished: a complete answer, opinion, decision or question. Reply with JSON only: "
+            '{"finished": true} or {"finished": false}.'
+        ),
+    }
+
 
 _whisper_lock = threading.Lock()
 
@@ -255,7 +264,10 @@ class Deck:
             self.s["requests"] = [r for r in self.s["requests"] if r["state"] != "done" and now - r["at"] < 1200]
             out = copy.deepcopy(self.s)
         out["server"] = {"session": bool(self.session), "countdown": self.cfg["send_countdown"], "now": time.time()}
-        out["guard"] = {"streak": rec_streak(out["answers"]), "limit": STREAK_GUARD}
+        out["guard"] = {
+            "streak": rec_streak(out["answers"], self.cfg["streak_gap_seconds"]),
+            "limit": self.cfg["streak_guard"],
+        }
         out["budget"] = {
             "probes": sum(1 for p in out["processes"] if p["kind"] in ("web", "code", "probe")),
             "maxProbes": out.get("depth", {}).get("maxProbes"),
@@ -413,7 +425,7 @@ class Deck:
 
     def utterance(self, text, seconds):
         with self.lock:
-            dropped = noise(text, bool(frontier(self.s)))
+            dropped = noise(text, bool(frontier(self.s)), self.lang)
             self.s["transcript"].append(
                 {
                     "id": len(self.s["transcript"]) + 1,
@@ -440,7 +452,7 @@ class Deck:
             lines = [t["text"] for t in self.s["transcript"] if not t["sent"] and not t.get("dropped")][-8:]
             cards = [f"{d['id']}: {d['title']}" for d in frontier(self.s)]
         try:
-            finished = judge(self.cfg["judge_model"], lines, cards, self.root)
+            finished = judge(self.cfg["judge_model"], self.lang["judge_system"], lines, cards, self.root)
         except Exception as exc:
             sys.stderr.write(f"judge failed: {exc}\n")
             finished = False
@@ -675,31 +687,31 @@ class Deck:
                 return self.stop(f"no input for {idle / 60:g} min")
 
 
-def rec_streak(answers):
+def rec_streak(answers, gap):
     """Recommended picks in a row, each sent soon after the one before it: the sign of a rubber stamp."""
     n, after = 0, None
     for a in reversed(answers):
-        if not a["rec"] or a["typed"] or (after is not None and after - a["at"] > STREAK_GAP):
+        if not a["rec"] or a["typed"] or (after is not None and after - a["at"] > gap):
             break
         n, after = n + 1, a["at"]
     return n
 
 
-def noise(text, cards_open):
+def noise(text, cards_open, lang):
     """Why a transcribed line is noise ("hallucination" or "filler"), or "" when it is real input."""
     words = re.findall(r"\w+", text.lower())
-    if HALLUCINATION_RE.search(text):
+    if lang["hallucination_re"] and lang["hallucination_re"].search(text):
         return "hallucination"
     # Whisper loops on noise: the same 3-word phrase three times or more
     grams = [" ".join(words[i : i + 3]) for i in range(len(words) - 2)]
     if grams and max(grams.count(g) for g in set(grams)) >= 3:
         return "hallucination"
-    if len(words) <= 3 and not (cards_open and set(words) & SHORT_ANSWERS):
+    if len(words) <= 3 and not (cards_open and set(words) & lang["short_answers"]):
         return "filler"
     return ""
 
 
-def judge(model, lines, cards, cwd):
+def judge(model, system, lines, cards, cwd):
     if not lines:
         return False
     prompt = (
@@ -717,7 +729,7 @@ def judge(model, lines, cards, cwd):
             "--output-format",
             "json",
             "--system-prompt",
-            JUDGE_SYSTEM,
+            system,
             "--tools",
             "",
             "--disable-slash-commands",
@@ -737,7 +749,7 @@ def judge(model, lines, cards, cwd):
     return bool(m and json.loads(m.group(0)).get("finished"))
 
 
-def transcribe(model, wav_bytes, wait=True):
+def transcribe(model, wav_bytes, wait=True, hallucinations=frozenset()):
     """wait=False is for the live preview: it gives up at once when a final transcription holds the model."""
     import mlx_whisper
     import numpy as np
@@ -749,7 +761,7 @@ def transcribe(model, wav_bytes, wait=True):
     if sr != 16000:
         audio = np.interp(np.arange(0, len(audio), sr / 16000), np.arange(len(audio)), audio).astype(np.float32)
     seconds = len(audio) / 16000
-    # no language: Whisper detects it per utterance; forcing "hu" translates English speech into Hungarian
+    # no language: Whisper detects it per utterance; forcing one translates speech in the others into it
     if not _whisper_lock.acquire(blocking=wait):
         return "", seconds
     try:
@@ -760,7 +772,7 @@ def transcribe(model, wav_bytes, wait=True):
         s for s in out.get("segments", []) if not (s.get("no_speech_prob", 0) > 0.6 and s.get("avg_logprob", 0) < -1)
     ]
     text = " ".join(s["text"].strip() for s in segs).strip()
-    if text.lower() in HALLUCINATIONS and seconds < 2.5:
+    if text.lower() in hallucinations and seconds < 2.5:
         text = ""
     return text, seconds
 
@@ -821,13 +833,15 @@ def make_handler(deck):
                 deck.last_input = time.time()
             try:
                 if path == "/api/utterance":
-                    text, seconds = transcribe(deck.cfg["whisper_model"], body)
+                    text, seconds = transcribe(deck.cfg["whisper_model"], body, hallucinations=deck.lang["hallucinations"])
                     if text:
                         deck.utterance(text, seconds)
                     return self.reply(HTTPStatus.OK, {"text": text, "seconds": round(seconds, 1)})
                 if path == "/api/partial":
                     # live preview while the user speaks: never stored, never sent
-                    text, seconds = transcribe(deck.cfg["whisper_model"], body, wait=False)
+                    text, seconds = transcribe(
+                        deck.cfg["whisper_model"], body, wait=False, hallucinations=deck.lang["hallucinations"]
+                    )
                     return self.reply(HTTPStatus.OK, {"text": text})
                 data = json.loads(body or b"{}")
                 routes = {
@@ -880,6 +894,7 @@ def main():
     cfg = load_config()
     session = opt.get("--session", os.environ.get("AGENTDECK_INSTANCE_ID", ""))
     deck = Deck(root, os.path.basename(root), opt.get("--title", ""), session, cfg)
+    deck.lang = load_languages(cfg)
     handler = make_handler(deck)
     port = int(opt.get("--port", 8790))
     for candidate in range(port, port + 20):

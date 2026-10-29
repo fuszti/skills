@@ -6,14 +6,16 @@ review. Reviewers found them later, after the code was written.
 
 ## What to look for
 
-Use the tools this session has. Skip a source you cannot reach and say so.
+Use the sources that the `## Scan sources` section of the repo settings names, and how it says to read them. Without
+it, use any connected tool (an MCP server or a CLI) that fits a category below. Skip a source you cannot reach and say
+so.
 
 | Source | Look for |
 |---|---|
-| Meeting notes and transcripts (for example Fathom), last 4–6 weeks, all recorders | the entity, the screen or the ticket named; requests, promises, "we should also" |
-| Chat (for example Slack) | threads about the same feature, complaints, customer quotes |
-| Issue tracker (for example Linear, Jira) | issues that touch the same entities, open or planned; the ticket's own comments and links |
-| Open pull requests | PRs that change the same files, tables, routes or screens; design or rewrite PRs |
+| The meeting recorder: notes and transcripts, last 4–6 weeks, all recorders | the entity, the screen or the ticket named; requests, promises, "we should also" |
+| The team chat | threads about the same feature, complaints, customer quotes |
+| The issue tracker (`docs/agents/issue-tracker.md`) | issues that touch the same entities, open or planned; the ticket's own comments and links |
+| Open change requests on the code host (`docs/agents/code-host.md`) | PRs that change the same files, tables, routes or screens; design or rewrite PRs |
 | The codebase | existing operations on the same entities: delete, merge, move, export, offboarding |
 
 ## Steps

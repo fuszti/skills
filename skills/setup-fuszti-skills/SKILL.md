@@ -1,16 +1,19 @@
 ---
 name: setup-fuszti-skills
-description: "Configure this repo for the explainer-video skills (shorts, explaining-code-changes, explaining-test-runs, explaining-runtime-behavior, explaining-traces): record where change requests, tickets, test environments, test commands, logs and traces live. Run once per repo before the first video thread about this repo's work."
+description: "Configure this repo for the explainer-video skills (shorts, explaining-code-changes, explaining-test-runs, explaining-runtime-behavior, explaining-traces) and grill-deck: record where change requests, tickets, test environments, test commands, logs and traces live, and how this team grills a plan. Run once per repo before the first video thread or deck about this repo's work."
 disable-model-invocation: true
 ---
 
 # Setup fuszti-skills
 
-The explainer-video skills work in any repo, but they must know this repo's workflow. This skill writes that
+The explainer-video skills and grill-deck work in any repo, but they must know this repo's workflow. This skill writes that
 workflow down once, in `docs/agents/`, so every later thread reads it instead of guessing.
 
 This is a prompt-driven skill, not a script. Explore, show what you found, confirm with the user, then write.
-`teaching-in-shorts` and `grill-deck` need no setup.
+`teaching-in-shorts` needs no setup. `grill-deck` works without setup, with its defaults; section I gives it this
+repo's habits.
+
+Never write a repo's or a person's values into the skill files: an update replaces them, and other users get them.
 
 ## 1. Explore
 
@@ -85,6 +88,19 @@ the `.claude/skills/` descriptions (path → skill), and let the user correct it
   field that lies, a span that double-counts, an environment quirk).
 → `docs/agents/explainer-profile.md` (template: [explainer-profile.md](./explainer-profile.md))
 
+**I. Grill-deck.** Only when the user grills plans about this repo. Propose each section from what exploration
+found, and from the earlier decks (`python3 <grill-deck>/scripts/deck.py ~/.grill-deck/<any slug> lessons`):
+- **Skeleton topics:** topics this team always adds, and default topics it does not need.
+- **Scan sources:** the meeting recorder, the team chat, the issue tracker and the code host, each with its tool
+  (a connected MCP server or a CLI) and scope. Reuse `issue-tracker.md` and `code-host.md`.
+- **Facts and probes:** the targets a probe may use (a dev account, a local stack, a scratch prefix), and the ones
+  that are off limits.
+- **Verification, review, visuals, depth:** the default proof path, the reviewers and their blast-radius checklist,
+  how to start the frontend with mock data, and other depth budgets.
+→ `docs/agents/grill-deck.md` (template: [grill-deck.md](./grill-deck.md)). Add `docs/agents/*.local.md` to
+`.gitignore`: a person's own additions go in `docs/agents/grill-deck.local.md`. Personal settings for every repo
+(voice languages, models, thresholds, the look) go in `~/.config/grill-deck/config.json`, not here.
+
 ## 3. Confirm and edit
 
 Show the drafts: the `## Agent skills` block and every `docs/agents/*.md` file you will write or change. Let the
@@ -106,6 +122,11 @@ Change requests: [one line]. Tickets: [one line]. Environments: [one line]. Test
 Logs and traces: [one line]. See `docs/agents/code-host.md`, `issue-tracker.md`, `environments.md`,
 `testing.md`, `observability.md`, `recipes/`, `areas.md`, `explainer-profile.md`, `system-map.json` and
 `lexicon.json`.
+
+### Grill-deck (fuszti-skills, only when section I ran)
+
+Team settings for grilling plans: `docs/agents/grill-deck.md`. Personal additions: `docs/agents/grill-deck.local.md`
+(gitignored).
 ```
 
 Then write the files from the templates in this folder. Write "none" sections as one line: `None: <reason>.`

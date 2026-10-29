@@ -13,7 +13,7 @@ python3 deck.py <session_dir> inbox [--wait]               # messages from outbo
 python3 deck.py <session_dir> check                        # what still blocks Done; exit 1 when something does
 python3 deck.py <session_dir> export [--out ledger.md] [--force]   # numbered decision ledger (refuses while check fails)
 python3 deck.py <session_dir> clean-probes                 # delete dependency folders under probes/, list worktrees
-python3 deck.py <session_dir> outcome q3|- --result followed|diverged|added [--class ...] [--pr 541] --note "..."
+python3 deck.py <session_dir> outcome q3|- --result followed|diverged|added [--class ...] [--pr 120] --note "..."
 python3 deck.py <session_dir> lessons                      # review points earlier decks missed, by class
 python3 deck.py <session_dir> stop                         # stop serve.py and free Whisper; state.json stays
 """

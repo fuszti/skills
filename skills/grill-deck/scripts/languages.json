@@ -1,0 +1,25 @@
+{
+  "any": {
+    "hallucination_patterns": [
+      "subscribe", "thanks for watching", "thank you for watching", "see you in the next video", "amara\\.org",
+      "ご視聴", "次回予告", "字幕", "untertitel"
+    ]
+  },
+  "en": {
+    "name": "English",
+    "hallucinations": ["thank you.", "thank you", "thanks for watching!", "you", ".", "bye."],
+    "short_answers": [
+      "yes", "no", "yeah", "nope", "ok", "okay", "sure", "option", "first", "second", "third",
+      "one", "two", "three", "four", "five", "both", "neither", "none",
+      "a", "b", "c", "d", "e", "1", "2", "3", "4", "5"
+    ],
+    "connectives": ["and", "but", "so", "because"]
+  },
+  "hu": {
+    "name": "Hungarian",
+    "hallucinations": ["köszönöm.", "köszönöm"],
+    "hallucination_patterns": ["feliratozta", "feliratok"],
+    "short_answers": ["igen", "nem", "jó", "oké", "persze", "első", "második", "harmadik", "mindkettő", "egyik"],
+    "connectives": ["és", "de", "mert"]
+  }
+}

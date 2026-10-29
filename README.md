@@ -30,7 +30,9 @@ bash <plugin dir>/skills/making-short-explainer-videos/scripts/setup.sh --record
 
 And once per repo that you want videos about: `/fuszti-skills:setup-fuszti-skills`. It asks where your change
 requests, tickets, test environments, test commands, logs and traces live, and writes the answers to
-`docs/agents/`. Topics and grill-deck need no setup.
+`docs/agents/`. Topics need no setup. Grill-deck works with its defaults. Setup can also record how your team
+grills a plan (`docs/agents/grill-deck.md`), and `~/.config/grill-deck/config.json` holds your own voice languages,
+thresholds and look. Customize through these files, never by editing the installed skills.
 
 Setup also writes what makes your threads specific to your repo:
 

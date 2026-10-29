@@ -34,9 +34,13 @@ Finding facts is your job, never the user's. Decisions are the user's: put each 
    [agent-deck](https://github.com/asheshgoplani/agent-deck) (`$AGENTDECK_INSTANCE_ID` or `--session`). Else it
    prints `(none: messages go to outbox.jsonl)`. Then start `$D inbox --wait` in the background (Bash
    `run_in_background`). It exits with the user's message. Act on it, then start it again.
-4. Run `$D lessons`. It lists the review points that earlier decks missed, by class. Keep them in mind for this
+4. Read the repo settings, when the subject lives in a repo: `docs/agents/grill-deck.md` (the team's) and
+   `docs/agents/grill-deck.local.md` (one person's, gitignored). The local file wins over the team file, and what the
+   user says now wins over both. A missing section means the defaults in this file. When neither file exists, tell
+   the user once: "Run `/setup-fuszti-skills` to record this repo's grill-deck settings." Then continue.
+5. Run `$D lessons`. It lists the review points that earlier decks missed, by class. Keep them in mind for this
    tree: they are the questions this user's reviewers ask.
-5. Send the first round (see "Round 1" below), then tell the user the URL in one line.
+6. Send the first round (see "Round 1" below), then tell the user the URL in one line.
 
 `$D` below stands for `python3 <grill-deck base directory>/scripts/deck.py ~/.grill-deck/<slug>`. Write it out in
 full in every command, and tell sub-agents the full form too: shell variables do not survive between Bash calls, and
@@ -49,9 +53,11 @@ the first round always holds three things:
 
 1. **The depth card** (`q1`): "How deep should we go?" with the options "Full depth (ships soon)", "Design only
    (RFC)" and "Park it". Base the recommendation on the ticket's priority, estimate and sprint. When it is settled,
-   send `depth: {"level": "full|rfc|park", "maxRounds": N, "maxProbes": N}` (for example 25/20, 12/8, 3/2). The
+   send `depth: {"level": "full|rfc|park", "maxRounds": N, "maxProbes": N}` (by default 25/20, 12/8, 3/2, or the
+   repo settings' `## Depth`). The
    header shows the budget. `proc add` warns when research goes over it. Over budget, prefer to park a branch.
-2. **The skeleton topics**, each with `skeleton: true`. Add your subject's own topics next to them:
+2. **The skeleton topics**, each with `skeleton: true`. Add the topics of the repo settings and your subject's own
+   topics next to them:
 
    | id | title | what it asks |
    |---|---|---|
@@ -60,15 +66,16 @@ the first round always holds three things:
    | `architecture` | Architecture and data | components, data model, contracts |
    | `neighbors` | Neighbors and lifecycle | existing operations on the same entities (delete, merge, move, export), limits, other teams' in-flight work |
    | `delivery` | Delivery split | how many PRs, in what order, what the teammates see |
-   | `verification` | Verification | how the human proves it works, on real infrastructure, and who checks what |
+   | `verification` | Verification | how the human proves it works, on which environment, and who checks what |
    | `rollout` | Rollout | release timing, flags, migration, what happens to existing data |
 
-   Each skeleton topic needs at least one card, or one settled card `answer: "n/a: <why>"`. `$D check` refuses Done
+   Each skeleton topic needs at least one card, or one settled card `answer: "n/a: <why>"` (also for a topic the
+   repo settings mark n/a). `$D check` refuses Done
    until each has one.
 3. **The scan**: two background agents (`--kind scan`) with `reference/scan-agent.md`. They look
    for the world outside the ticket: meetings, chat threads, tickets and open PRs that touch the same entities,
-   screens or tables. Each hit becomes a fact in a card body or a new card ("A customer asked for personal tasks on
-   Oct 21: in scope?").
+   screens or tables. Give them the repo settings' `## Scan sources`. Each hit becomes a fact in a card body or a
+   new card ("A customer asked for this export in a call two weeks ago: in scope?").
 
 ## The tree
 
@@ -89,8 +96,8 @@ Send it with `$D update` and a JSON document on stdin (`$D update <<'EOF' … EO
   - `flip`: what would change your recommendation, one line (a fact, a constraint, a number).
   - `stake: "high"` for a decision that is hard to undo.
   - `counter`: the strongest argument against your recommendation, one line. Give it on every card with options.
-    The deck shows it on high-stake cards, and on every card after the user accepted 5 recommendations in a row
-    within a minute each. Then it also asks the user for a one-line reason.
+    The deck shows it on high-stake cards, and on every card after the user accepted `streak_guard` (default 5)
+    recommendations in a row, each within `streak_gap_seconds` (default 60). Then it also asks the user for a one-line reason.
   - `default: true` for a low-stake card where your recommendation is a safe default. With two or more of them on
     the frontier, the deck offers "Accept all N recommendations", so attention goes to the cards that matter.
   - `verify`: how to check this decision in the built code, one line. `export` writes it into the ledger.
@@ -138,7 +145,7 @@ sent card that does not settle it reopens it (back to the frontier, the user's p
    decision `open` and add a **confirm card** with `confirms: "<id>"`, `stake: "high"` and the two readings as
    options, so the answer is one click. Never only a note in the body: `check` and `export` refuse while a card is
    answered but not settled, so a silent open question cannot reach the RFC.
-3. Free talk is speech-to-text: expect errors, Hungarian and English mixed, half sentences. Read it charitably and
+3. Free talk is speech-to-text: expect errors, the user's `voice_languages` mixed, half sentences. Read it charitably and
    never ask the user to repeat what you can infer. The server drops known Whisper hallucinations ("subscribe",
    subtitle credits, a phrase repeated 3 times) and fillers of 3 words or fewer before they reach you. The user can
    still click "Send anyway". A short filler that reaches you is still never enough to settle a decision.
@@ -179,8 +186,10 @@ $D proc done $P --status "3 readers, all admin-only"   # or --failed
   card. The server refuses `done` without a verdict for `web`, `code` and `probe`.
 - Ask for one fact, as a number or a yes/no. The probes that changed decisions answered one question the user asked,
   on real data, within a few minutes. Dispatch a probe when the user asks a question aloud that data can answer.
-- A fact about cloud or service behavior runs on the real target (a dev account, a scratch prefix, cleaned up
-  afterwards), never only on a mock or emulator: a mock can accept what the real service rejects.
+- When a fact depends on how a real service behaves (a cloud API, a policy engine, a database), prefer the real
+  target (a dev account, a scratch prefix, cleaned up afterwards) to a mock or an emulator: a mock can accept what the
+  real service rejects. The repo settings' `## Facts and probes` say which targets are allowed and which are off
+  limits.
 - A decision that **enforces** something (a deny rule, an IAM policy, a guardrail, a proof step) gets a feasibility
   probe before it settles: can it be done, and who else does it bind?
 - When it reports, fold the fact into the card in an update (body, recommendation, `flip`), and settle nothing for the
@@ -196,8 +205,9 @@ After each update, dispatch one background visual agent per new decision whose a
 a flow or sequence, a state machine, components and their links, a timeline, a data layout, or a side-by-side of the
 options. Never for a pure preference question. One agent per visual; a question that needs two views gets two agents.
 Give each agent `reference/visual-agent.md` (read it, then pass its rules in the prompt), the decision JSON, the
-facts you know, and the tab title. For a card about a screen, tell the agent where the frontend is: it shows the
-real app with mock data first, and draws a schematic only when that fails. Use a fast model (`model: "sonnet"`). It registers as `--kind visual --for q3`
+facts you know, and the tab title. For a card about a screen, tell the agent where the frontend is and how it starts
+with mock data (the repo settings' `## Visuals`): it shows the real app first, and draws a schematic only when that
+fails. Use a fast model (`model: "sonnet"`). It registers as `--kind visual --for q3`
 (the tab shows "drawing" meanwhile) and ends with `$D visual add q3 <file.html> --title "<tab title>"`.
 
 ```bash
@@ -214,7 +224,7 @@ gets a small check script: a mermaid error or text below 4.5:1 marks the tab "fi
 When the frontier is empty:
 
 1. **Reviewer pre-mortem.** Dispatch one agent (`model: "opus"`, `--kind review`) with
-   `reference/reviewer-agent.md` and the settled tree (`$D export --force --out <scratch>/draft.md`). It reads the
+   `reference/reviewer-agent.md` and the settled tree (`$D export --force --out <scratch>/draft.md`). Give it the repo settings' `## Review`. It reads the
    repo rules and the recent human review comments of the team, runs a blast-radius probe, and returns the review
    points a reviewer would raise. Each point becomes a card. When none is left, it finishes with `proc done`.
 2. `$D check` must print "ready for Done". It blocks on open or answered-but-unsettled cards, skeleton topics
@@ -234,9 +244,9 @@ the PR diff and its human review threads with `ledger.json`. It records one outc
 point the deck never asked (no server needed):
 
 ```bash
-$D outcome q7 --result followed --pr 541
-$D outcome q9 --result diverged --pr 563 --note "deny rules would bind every developer"
-$D outcome - --result added --class missed-constraint --pr 541 --note "project merge cascade-deletes tasks"
+$D outcome q7 --result followed --pr 120
+$D outcome q9 --result diverged --pr 124 --note "the deny rule would bind every developer"
+$D outcome - --result added --class missed-constraint --pr 120 --note "deleting a workspace also deletes the new rows"
 ```
 
 Classes: `missed-constraint`, `missed-decision`, `naming-ux`, `test-qa`, `ops-deploy`, `scope`, `other`. The next
@@ -244,8 +254,18 @@ session reads them with `$D lessons`.
 
 ## Configuration
 
-`~/.config/grill-deck/config.json` (or `$GRILL_DECK_CONFIG`) changes the look and the voice for every session. All
-keys are optional. The comments below explain the keys; the real file is plain JSON without comments.
+Settings come in layers. A later layer wins:
+
+1. The defaults in this skill.
+2. `~/.config/grill-deck/config.json` (or `$GRILL_DECK_CONFIG`): one person's look, voice and thresholds, for every
+   session.
+3. `docs/agents/grill-deck.md` in the repo: the team's topics, scan sources, probe limits, review habits and visuals.
+   `/setup-fuszti-skills` writes it.
+4. `docs/agents/grill-deck.local.md` (gitignored): one person's additions for this repo.
+5. What the user says in the session.
+
+Never edit the skill files to customize the deck: an update replaces them. All keys of `config.json` are
+optional. The comments below explain the keys; the real file is plain JSON without comments.
 
 ```json
 {
@@ -261,6 +281,10 @@ keys are optional. The comments below explain the keys; the real file is plain J
   },
   "whisper_model": "mlx-community/whisper-large-v3-turbo",
   "judge_model": "haiku",
+  "voice_languages": ["en"],      // the language packs the noise filter and the judge use (scripts/languages.json)
+  "languages": { "de": { "name": "German", "short_answers": ["ja", "nein"], "connectives": ["und", "aber"] } },
+  "streak_guard": 5,              // fast recommended picks in a row before the deck asks for a reason
+  "streak_gap_seconds": 60,       // a pick within this time of the previous one counts toward the streak
   "send_countdown": 3.0,
   "stop_without_page_minutes": 10,  // no open deck page this long → the server stops (0: never)
   "stop_idle_minutes": 120          // no answer, click or update this long → the server stops (0: never)
@@ -269,7 +293,11 @@ keys are optional. The comments below explain the keys; the real file is plain J
 
 - The defaults and every token name are in `app/themes.json`. A new theme must define every `vars` key there.
 - The page and the visuals read the same `/theme.css`, so a change shows on reload, in the visuals too.
-- For Hungarian, `mlx-community/whisper-large-v3-mlx` is more accurate and slower than the turbo default.
+- `languages` adds a pack or extends a shipped one: `name`, `hallucinations` (whole utterances Whisper invents on
+  silence), `hallucination_patterns` (regular expressions), `short_answers` (words that can settle a card, never
+  dropped as filler) and `connectives` (words after which a thought is not finished).
+- For languages other than English, `mlx-community/whisper-large-v3-mlx` is more accurate and slower than the turbo
+  default.
 - Keep text contrast at 4.5:1 or more when you add colors.
 
 ## Common mistakes
@@ -287,6 +315,7 @@ keys are optional. The comments below explain the keys; the real file is plain J
 | The user adds "don't forget the verification plan" | the skeleton topics were missing from round 1 |
 | A contradiction kept as a note in `body` | a confirm card with the two readings as options |
 | A probe that ends without `--verdict` | killed, changed, confirmed or inconclusive |
-| A cloud fact proven only on a mock | run it on the real target with a scratch prefix |
+| A service fact proven only on a mock | prefer the real target, inside the limits of the repo settings |
 | Grilling every child of a branch the user wants to defer | "park" it as a follow-up |
 | Done without the reviewer pre-mortem | `check` refuses it; run the review agent |
+| A team habit written into the skill files | put it in `docs/agents/grill-deck.md`; personal ones in `.local.md` or `config.json` |
