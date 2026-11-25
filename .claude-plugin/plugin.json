@@ -2,5 +2,7 @@
   "name": "fuszti-skills",
   "version": "0.3.0",
   "description": "Narrated explainer video threads (/shorts) about code changes, test runs, runtime behavior, traces or any topic, plus grill-deck: grill a plan in a local web app with voice input. Project independent: /setup-fuszti-skills records each repo's workflow.",
-  "author": { "name": "Fuszti" }
+  "author": { "name": "Fuszti" },
+  "repository": "https://github.com/fuszti/skills",
+  "license": "MIT"
 }

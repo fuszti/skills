@@ -10,15 +10,15 @@ A Claude Code plugin. This repo is also its marketplace.
 
 ## Install
 
+In Claude Code:
+
 ```text
-/plugin marketplace add <this repo's git URL>
+/plugin marketplace add fuszti/skills
 /plugin install fuszti-skills@fuszti-skills
 ```
 
-- Claude Code accepts `https://…` and `git@host:path` URLs. For SSH on a custom port, add a `Host` alias with
-  `HostName` and `Port` to `~/.ssh/config` and use `git@<alias>:<path>`. Append `#main` when the server has no
-  default branch.
-- Claude Code never asks for a password: the SSH key must work without a prompt.
+- The repo is public. Nothing needs a login or an SSH key. To update later: `/plugin marketplace update fuszti-skills`.
+- To use the full URL instead of the `owner/repo` shorthand: `/plugin marketplace add https://github.com/fuszti/skills.git`.
 - Plugin skills are namespaced: `/fuszti-skills:shorts`.
 
 Then, once per machine:
