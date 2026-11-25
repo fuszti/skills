@@ -86,8 +86,10 @@ bash $K/scripts/explainer /tmp/demo --site         # feed page in /tmp/demo/site
   Silicon, `faster-whisper` elsewhere (on an NVIDIA GPU when one is present, else on the CPU; `WHISPER_DEVICE=cpu`
   forces the CPU).
 - Node.js 18 or later for UI recordings.
-- Optional: [agent-deck](https://github.com/asheshgoplani/agent-deck). With it, spoken follow-ups and grill-deck
-  answers reach the Claude session at once. Without it they wait in a local queue that the session reads.
+- Spoken follow-ups and grill-deck answers reach the Claude Code session that started the server: that session
+  runs a small inbox in the background, which exits with the user's input and wakes the session.
+- Optional: [agent-deck](https://github.com/asheshgoplani/agent-deck). With it, the servers send the input as
+  messages to an agent-deck session instead of the inbox.
 
 ## License
 

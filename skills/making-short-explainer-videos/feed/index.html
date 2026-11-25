@@ -290,7 +290,7 @@ async function send(body, type, part, at) {
     const j = await r.json();
     if (!r.ok) { say(`Not sent: ${j.error || r.status}`); return; }
     if (j.status === "empty") { say("Heard nothing. Pause and speak again."); return; }
-    say(`${j.status === "queued" ? "Queued (no session)" : "Sent"}: “${j.text}”`);
+    say(`${j.status === "queued" ? "Queued (no Claude session listens)" : "Sent to Claude"}: “${j.text}”`);
     pollRequests();
   } catch { say("Not sent: the local server does not answer."); }
 }
@@ -338,9 +338,11 @@ askbar.addEventListener("submit", (e) => {
 });
 
 let requests = [];
+let attached = false;
 function pending() {
   const answered = new Set(PARTS.map((p) => p.request).filter(Boolean));
-  return requests.filter((r) => ["sending", "sent"].includes(r.status) && !answered.has(r.id)).length;
+  const live = ["sending", "sent", "delivered"].concat(attached ? ["queued"] : []);
+  return requests.filter((r) => live.includes(r.status) && !answered.has(r.id)).length;
 }
 function showPending() {
   const n = pending();
@@ -349,6 +351,15 @@ function showPending() {
     const base = askMsg.textContent.replace(/ · \d+ follow-ups? in progress$/, "");
     askMsg.textContent = `${base}${base ? " · " : ""}${n} follow-up${n === 1 ? "" : "s"} in progress`;
   }
+}
+const DETACHED = "No Claude session listens: requests are queued.";
+function showAttached(on) {
+  attached = Boolean(on);
+  if (!attached && !askMsg.textContent) say(DETACHED);
+  if (attached && askMsg.textContent === DETACHED) say("");
+}
+async function pollAttached() {
+  try { showAttached((await (await fetch("local.json", { cache: "no-store" })).json()).session); } catch {}
 }
 async function pollRequests() {
   try { requests = (await (await fetch("requests.json", { cache: "no-store" })).json()).requests; showPending(); } catch {}
@@ -382,7 +393,8 @@ fetch("parts.json").then((r) => r.json()).then((cfg) => {
     local = true;
     document.body.classList.add("local");
     askbar.hidden = false;
-    if (!j.session) say("No Claude session attached: requests are queued.");
+    showAttached(j.session);
+    setInterval(pollAttached, 5000);
     setInterval(pollParts, 5000);
     setInterval(pollRequests, 5000);
     pollRequests();

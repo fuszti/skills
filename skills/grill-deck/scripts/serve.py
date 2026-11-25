@@ -13,7 +13,9 @@ a Haiku judge (`claude -p`, no tools, no context) decides whether the user finis
 and the talk go to the session after a short undo window, with `agent-deck session send --no-wait` (Claude Code
 queues a message that arrives mid-turn).
 
---session defaults to $AGENTDECK_INSTANCE_ID. Without one, messages go to <session_dir>/outbox.jsonl.
+Messages reach the Claude Code session that started the deck: without agent-deck they go to
+<session_dir>/outbox.jsonl, and that session's `deck.py <session_dir> inbox --wait` (in the background) exits with
+them, which wakes the session. --session (default $AGENTDECK_INSTANCE_ID) sends them with agent-deck instead.
 Settings: ~/.config/grill-deck/config.json (or $GRILL_DECK_CONFIG); see the skill's SKILL.md, "Configuration".
 """
 
@@ -267,7 +269,13 @@ class Deck:
             now = time.time()
             self.s["requests"] = [r for r in self.s["requests"] if r["state"] != "done" and now - r["at"] < 1200]
             out = copy.deepcopy(self.s)
-        out["server"] = {"session": bool(self.session), "countdown": self.cfg["send_countdown"], "now": time.time()}
+        attached = bool(self.session)
+        if not self.session:
+            # without agent-deck the listener tells: waiting = the session waits for you, delivered = it works
+            listener = self.listener_state()
+            out["claude"] = "working" if listener == "delivered" else "waiting"
+            attached = bool(listener)
+        out["server"] = {"session": attached, "countdown": self.cfg["send_countdown"], "now": time.time()}
         out["guard"] = {
             "streak": rec_streak(out["answers"], self.cfg["streak_gap_seconds"]),
             "limit": self.cfg["streak_guard"],
@@ -571,7 +579,7 @@ class Deck:
                 self.s["pending"] = {
                     "state": done_state if ok else "failed",
                     "at": time.time(),
-                    "note": "" if self.session else "queued in outbox.jsonl",
+                    "note": "" if self.session or self.listening() else "queued in outbox.jsonl",
                 }
                 self.save()
         return ok
@@ -627,6 +635,25 @@ class Deck:
             self.s["outcomes"].append({**o, "at": time.time()})
             self.save()
             return {"count": len(self.s["outcomes"])}
+
+    def listener_state(self, grace=1800):
+        """"waiting" while the session's `deck.py inbox --wait` runs, "delivered" within `grace` s after it exited
+        with a message (the session works on it), else ""."""
+        try:
+            info = json.load(open(os.path.join(self.root, "listener.json")))
+        except (OSError, ValueError):
+            return ""
+        if info.get("state") == "waiting":
+            try:
+                os.kill(int(info["pid"]), 0)
+                return "waiting"
+            except (OSError, TypeError, ValueError):
+                return ""
+        fresh = info.get("state") == "delivered" and time.time() - info.get("at", 0) < grace
+        return "delivered" if fresh else ""
+
+    def listening(self):
+        return bool(self.listener_state())
 
     def session_status(self):
         """agent-deck says `running` while the session works and `waiting`/`idle` while it waits for the user."""
@@ -913,7 +940,8 @@ def main():
     with open(info, "w") as f:
         json.dump({"port": candidate, "pid": os.getpid()}, f)
     url = f"http://localhost:{candidate}/"
-    print(f"deck: {url}  session: {session or '(none: messages go to outbox.jsonl)'}", flush=True)
+    how = f"agent-deck {session}" if session else "outbox.jsonl; run `deck.py <dir> inbox --wait` in the background"
+    print(f"deck: {url}  delivery: {how}", flush=True)
     threading.Thread(target=warmup, args=(cfg["whisper_model"],), daemon=True).start()
     threading.Thread(target=deck.poll_session, daemon=True).start()
     threading.Thread(target=deck.watchdog, daemon=True).start()

@@ -30,10 +30,12 @@ Finding facts is your job, never the user's. Decisions are the user's: put each 
    (~1.6 GB) to the Hugging Face cache; `whisper ready: <backend>` follows. The backend is mlx-whisper on Apple
    Silicon and faster-whisper elsewhere: on a CUDA GPU when NVIDIA's libraries load (the wrapper adds their wheels
    on Linux when `nvidia-smi` sees a GPU), else on the CPU. `WHISPER_DEVICE=cpu` forces the CPU.
-3. Find out how the user's input reaches you. The server prints `session: <id>` when it sends through
-   [agent-deck](https://github.com/asheshgoplani/agent-deck) (`$AGENTDECK_INSTANCE_ID` or `--session`). Else it
-   prints `(none: messages go to outbox.jsonl)`. Then start `$D inbox --wait` in the background (Bash
-   `run_in_background`). It exits with the user's message. Act on it, then start it again.
+3. Listen for the user's input in this session: start `$D inbox --wait` in the background (Bash
+   `run_in_background`). It exits with the user's message, and that exit wakes you. Act on it, then start it again
+   at once. While it waits, the page shows "waiting for you"; without it, "no session", and the input waits in
+   `outbox.jsonl`. Only when the server prints `delivery: agent-deck <id>` (`--session` or
+   `$AGENTDECK_INSTANCE_ID`, with [agent-deck](https://github.com/asheshgoplani/agent-deck)) does the input arrive
+   as messages instead; then start no inbox.
 4. Read the repo settings, when the subject lives in a repo: `docs/agents/grill-deck.md` (the team's) and
    `docs/agents/grill-deck.local.md` (one person's, gitignored). The local file wins over the team file, and what the
    user says now wins over both. A missing section means the defaults in this file. When neither file exists, tell
@@ -312,8 +314,9 @@ optional. The comments below explain the keys; the real file is plain JSON witho
 | A probe in the user's working tree | a throwaway worktree or `~/.grill-deck/<slug>/probes/` |
 | Options listed in `body` too | `body` is context; options go in `options` |
 | A visual for a preference question | only structure or time; else none |
-| Server started from another shell | start it from this session: messages go to `$AGENTDECK_INSTANCE_ID`, else to `outbox.jsonl` |
-| No agent-deck and no `inbox --wait` running | the user's answers wait in `outbox.jsonl`; start `$D inbox --wait` in the background again after each message |
+| Server started from another shell | start the server and `$D inbox --wait` from this session: the inbox's exit is what wakes it |
+| No `inbox --wait` running (page: "no session") | the user's answers wait in `outbox.jsonl`; start `$D inbox --wait` in the background again after each message |
+| Polling `outbox.jsonl` or `$D show` in a loop | start `$D inbox --wait` in the background and end the turn; its exit wakes you |
 | `deck.py`: "no server" | start `deck-server` again with the same folder; the tree is kept |
 | `serve.py` started with plain `python` or `uv run` | start `deck-server`: it adds the Whisper backend for the platform |
 | The user adds "don't forget the verification plan" | the skeleton topics were missing from round 1 |
