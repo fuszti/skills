@@ -1,15 +1,17 @@
 """grill-deck server: the local web app for a grill-deck session.
 
-    uv run -q --no-project --python 3.12 --with mlx-whisper --with numpy --with soundfile \\
-        python serve.py <session_dir> [--title "..."] [--session <agent-deck id>] [--port 8790] [--no-open]
+    bash deck-server <session_dir> [--title "..."] [--session <agent-deck id>] [--port 8790] [--no-open]
+
+deck-server runs this file under uv with the Whisper backend for the platform (stt-deps.sh).
 
 It is the only writer of <session_dir>/state.json. Claude and its background agents change the state through
 deck.py (HTTP on 127.0.0.1); the page reads /api/state every second.
 
 Voice: the page cuts the mic stream into utterances (browser VAD) and posts 16 kHz WAV to /api/utterance. Whisper
-(mlx, local, language detected per utterance) writes the text; a Haiku judge (`claude -p`, no tools, no context)
-decides whether the user finished a thought. If so, the answers and the talk go to the session after a short undo
-window, with `agent-deck session send --no-wait` (Claude Code queues a message that arrives mid-turn).
+(local, language detected per utterance; stt.py: mlx on Apple Silicon, faster-whisper elsewhere) writes the text;
+a Haiku judge (`claude -p`, no tools, no context) decides whether the user finished a thought. If so, the answers
+and the talk go to the session after a short undo window, with `agent-deck session send --no-wait` (Claude Code
+queues a message that arrives mid-turn).
 
 --session defaults to $AGENTDECK_INSTANCE_ID. Without one, messages go to <session_dir>/outbox.jsonl.
 Settings: ~/.config/grill-deck/config.json (or $GRILL_DECK_CONFIG); see the skill's SKILL.md, "Configuration".
@@ -29,6 +31,8 @@ import webbrowser
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlparse
+
+import stt
 
 SKILL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.join(SKILL, "app")
@@ -668,7 +672,7 @@ class Deck:
 
 
     def stop(self, reason):
-        print(f"stopping: {reason}. The tree stays in state.json; serve.py with the same folder reopens it.", flush=True)
+        print(f"stopping: {reason}. The tree stays in state.json; deck-server with the same folder reopens it.", flush=True)
         # shutdown() waits for serve_forever, so it cannot run on a request thread
         threading.Thread(target=self.server.shutdown, daemon=True).start()
         return {"stopped": True}
@@ -751,7 +755,6 @@ def judge(model, system, lines, cards, cwd):
 
 def transcribe(model, wav_bytes, wait=True, hallucinations=frozenset()):
     """wait=False is for the live preview: it gives up at once when a final transcription holds the model."""
-    import mlx_whisper
     import numpy as np
     import soundfile as sf
 
@@ -765,7 +768,7 @@ def transcribe(model, wav_bytes, wait=True, hallucinations=frozenset()):
     if not _whisper_lock.acquire(blocking=wait):
         return "", seconds
     try:
-        out = mlx_whisper.transcribe(audio, path_or_hf_repo=model, condition_on_previous_text=False)
+        out = stt.transcribe(audio, model, condition_on_previous_text=False)
     finally:
         _whisper_lock.release()
     segs = [
@@ -879,7 +882,7 @@ def warmup(model):
     sf.write(buf, np.zeros(16000, np.float32), 16000, format="WAV")
     try:
         transcribe(model, buf.getvalue())
-        print("whisper ready", flush=True)
+        print(f"whisper ready: {stt.describe()}", flush=True)
     except Exception as exc:
         print(f"whisper warmup failed: {exc}", flush=True)
 

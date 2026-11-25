@@ -3,9 +3,10 @@
     bash scripts/explainer-feed <project_dir> [--session <agent-deck id>] [--port 8765] [--no-open]
 
 The page records while the viewer has paused the video by hand, and posts the audio (or typed text) to /ask when they
-press play. This server saves it under <project_dir>/requests/, writes the text with a local Whisper model (no audio
-leaves the machine), and sends the request to the session with `agent-deck session send --defer-if-busy`. The session
-renders follow-up parts and runs `build.py --site`; the page reads parts.json again every few seconds.
+press play. This server saves it under <project_dir>/requests/, writes the text with a local Whisper model (stt.py:
+mlx-whisper on Apple Silicon, faster-whisper elsewhere; no audio leaves the machine), and sends the request to the
+session with `agent-deck session send --defer-if-busy`. The session renders follow-up parts and runs
+`build.py --site`; the page reads parts.json again every few seconds.
 
 --session defaults to $AGENTDECK_INSTANCE_ID (the session that started this server). Without one, requests stay
 queued in requests/ with status "queued" for the next session to pick up.
@@ -25,6 +26,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import imageio_ffmpeg
 import numpy as np
 import soundfile as sf
+import stt
 
 WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -34,8 +36,6 @@ _LOCK = threading.Lock()  # one transcription at a time: the model is loaded onc
 
 def transcribe(path):
     """Decode any browser audio (webm/opus, mp4, wav) to 16 kHz mono with ffmpeg, then run Whisper on the array."""
-    import mlx_whisper
-
     raw = subprocess.run(
         [
             imageio_ffmpeg.get_ffmpeg_exe(),
@@ -58,7 +58,7 @@ def transcribe(path):
     if len(audio) < MIN_SECONDS * 16000:
         return ""
     with _LOCK:
-        out = mlx_whisper.transcribe(audio, path_or_hf_repo=WHISPER_MODEL, language="en")
+        out = stt.transcribe(audio, WHISPER_MODEL, language="en")
     return out.get("text", "").strip()
 
 
@@ -194,7 +194,7 @@ def transcribe_warmup():
         with tempfile.NamedTemporaryFile(suffix=".wav") as f:
             sf.write(f.name, np.zeros(16000 * 2, np.float32), 16000)
             transcribe(f.name)
-        print("whisper ready", flush=True)
+        print(f"whisper ready: {stt.describe()}", flush=True)
     except Exception as exc:
         print(f"whisper warmup failed: {exc}", flush=True)
 

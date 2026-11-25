@@ -84,9 +84,11 @@ hexgrad/Kokoro-82M `VOICES.md`).
 ## Follow-up requests (local feed)
 
 The local feed lets the viewer ask for more while watching. They turn on the mic, pause, speak, and press play.
-`serve.py` writes the text with a local Whisper model (`mlx-whisper`, no audio leaves the machine). Voice input
-needs Apple Silicon. New parts appear at the end of the open feed within 5 s of `--site`. A published copy shows
-no ask bar: `local.json` exists only on the local server.
+`serve.py` writes the text with a local Whisper model (no audio leaves the machine): `mlx-whisper` on Apple
+Silicon, `faster-whisper` on Linux and Intel Macs, on a CUDA GPU when one loads, else on the CPU
+(`WHISPER_DEVICE=cpu` forces it). The first start downloads the model (~1.6 GB). New parts appear at the end of
+the open feed within 5 s of `--site`. A published copy shows no ask bar: `local.json` exists only on the local
+server.
 
 Start it in the background:
 ```bash

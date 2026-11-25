@@ -24,12 +24,12 @@ Finding facts is your job, never the user's. Decisions are the user's: put each 
    starting it again resumes the tree).
 2. Start the server in the background (Bash `run_in_background`) from this session, so replies reach you:
    ```bash
-   cd <grill-deck base directory>/scripts
-   uv run -q --no-project --python 3.12 --with mlx-whisper --with numpy --with soundfile \
-       python serve.py ~/.grill-deck/<slug> --title "<subject in a few words>"
+   bash <grill-deck base directory>/scripts/deck-server ~/.grill-deck/<slug> --title "<subject in a few words>"
    ```
    It prints `deck: http://localhost:<port>/` and opens the browser. The first start downloads the Whisper model
-   (~1.6 GB) to the Hugging Face cache; `whisper ready` follows. Apple Silicon only (mlx).
+   (~1.6 GB) to the Hugging Face cache; `whisper ready: <backend>` follows. The backend is mlx-whisper on Apple
+   Silicon and faster-whisper elsewhere: on a CUDA GPU when NVIDIA's libraries load (the wrapper adds their wheels
+   on Linux when `nvidia-smi` sees a GPU), else on the CPU. `WHISPER_DEVICE=cpu` forces the CPU.
 3. Find out how the user's input reaches you. The server prints `session: <id>` when it sends through
    [agent-deck](https://github.com/asheshgoplani/agent-deck) (`$AGENTDECK_INSTANCE_ID` or `--session`). Else it
    prints `(none: messages go to outbox.jsonl)`. Then start `$D inbox --wait` in the background (Bash
@@ -235,7 +235,7 @@ When the frontier is empty:
 5. Summarize the shared understanding in chat (settled decisions grouped by topic) and ask the user to confirm. Do
    not act on the plan until they confirm.
 6. When the user confirms, run `$D stop`. The server holds the Whisper model (2–4 GB) until it stops. The tree
-   stays in `state.json`, and `serve.py` with the same folder opens it again.
+   stays in `state.json`, and `deck-server` with the same folder opens it again.
 
 ## After the merge
 
@@ -298,6 +298,9 @@ optional. The comments below explain the keys; the real file is plain JSON witho
   dropped as filler) and `connectives` (words after which a thought is not finished).
 - For languages other than English, `mlx-community/whisper-large-v3-mlx` is more accurate and slower than the turbo
   default.
+- `whisper_model` is written in its mlx form on every platform. On faster-whisper,
+  `mlx-community/whisper-<name>[-mlx]` becomes `<name>` (`large-v3-turbo`, `large-v3`); any other name or a local
+  CTranslate2 model path is used as is.
 - Keep text contrast at 4.5:1 or more when you add colors.
 
 ## Common mistakes
@@ -311,7 +314,8 @@ optional. The comments below explain the keys; the real file is plain JSON witho
 | A visual for a preference question | only structure or time; else none |
 | Server started from another shell | start it from this session: messages go to `$AGENTDECK_INSTANCE_ID`, else to `outbox.jsonl` |
 | No agent-deck and no `inbox --wait` running | the user's answers wait in `outbox.jsonl`; start `$D inbox --wait` in the background again after each message |
-| `deck.py`: "no server" | start `serve.py` again with the same folder; the tree is kept |
+| `deck.py`: "no server" | start `deck-server` again with the same folder; the tree is kept |
+| `serve.py` started with plain `python` or `uv run` | start `deck-server`: it adds the Whisper backend for the platform |
 | The user adds "don't forget the verification plan" | the skeleton topics were missing from round 1 |
 | A contradiction kept as a note in `body` | a confirm card with the two readings as options |
 | A probe that ends without `--verdict` | killed, changed, confirmed or inconclusive |

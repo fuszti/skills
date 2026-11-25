@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Serve the local feed with voice follow-ups:  bash explainer-feed <project> [--session <id>] [--port 8765] [--no-open]
-# Voice input (mlx-whisper) needs Apple Silicon.
-exec uv run -q --no-project --python 3.12 --with mlx-whisper --with imageio-ffmpeg --with soundfile --with numpy \
-  python "$(cd "$(dirname "$0")" && pwd)/serve.py" "$@"
+# Voice input runs local Whisper: mlx-whisper on Apple Silicon, faster-whisper on Linux and Intel Macs (stt-deps.sh).
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
+source "$here/stt-deps.sh"
+exec uv run -q --no-project --python 3.12 "${STT_DEPS[@]}" --with imageio-ffmpeg --with soundfile --with numpy \
+  python "$here/serve.py" "$@"

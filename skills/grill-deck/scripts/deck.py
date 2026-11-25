@@ -30,7 +30,7 @@ import urllib.request
 def call(root, path, body=None):
     info = os.path.join(root, "server.json")
     if not os.path.exists(info):
-        raise SystemExit(f"no server for {root}: start serve.py first")
+        raise SystemExit(f"no server for {root}: start deck-server first")
     port = json.load(open(info))["port"]
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(
@@ -42,7 +42,7 @@ def call(root, path, body=None):
     except urllib.error.HTTPError as exc:
         raise SystemExit(f"{path}: {json.load(exc).get('error', exc)}")
     except urllib.error.URLError as exc:
-        raise SystemExit(f"server on port {port} does not answer ({exc.reason}): start serve.py again")
+        raise SystemExit(f"server on port {port} does not answer ({exc.reason}): start deck-server again")
 
 
 def flags(args):
@@ -217,7 +217,7 @@ def outcome(root, qid, opt):
     try:
         print(f"{call(root, '/api/outcome', body)['count']} outcomes recorded")
     except SystemExit as exc:
-        if "start serve.py" not in str(exc):
+        if "start deck-server" not in str(exc):
             raise
         # the grill is long over: with no server, this command is the only writer
         s = load(root)
@@ -339,7 +339,7 @@ def main():
             print("no server running")
         else:
             call(root, "/api/stop", {})
-            print("server stopped; start serve.py with the same folder to reopen the tree")
+            print("server stopped; start deck-server with the same folder to reopen the tree")
     else:
         raise SystemExit(__doc__)
 

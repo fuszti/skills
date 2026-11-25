@@ -82,7 +82,9 @@ bash $K/scripts/explainer /tmp/demo --site         # feed page in /tmp/demo/site
 ## Requirements
 
 - `uv` (the setup script installs it). It supplies Python 3.12, ffmpeg, Kokoro and Whisper at run time.
-- Voice input (`mlx-whisper`) needs Apple Silicon. Rendering works on macOS and Linux.
+- Rendering and voice input work on macOS and Linux. Voice input runs local Whisper: `mlx-whisper` on Apple
+  Silicon, `faster-whisper` elsewhere (on an NVIDIA GPU when one is present, else on the CPU; `WHISPER_DEVICE=cpu`
+  forces the CPU).
 - Node.js 18 or later for UI recordings.
 - Optional: [agent-deck](https://github.com/asheshgoplani/agent-deck). With it, spoken follow-ups and grill-deck
   answers reach the Claude session at once. Without it they wait in a local queue that the session reads.
