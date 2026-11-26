@@ -9,7 +9,7 @@ python3 deck.py <session_dir> visual replace <qid> <vid> <file.html> [--title ".
 python3 deck.py <session_dir> visual remove <qid> <vid>
 python3 deck.py <session_dir> visual list [qid]
 python3 deck.py <session_dir> show                         # frontier, unsent answers, processes
-python3 deck.py <session_dir> inbox [--wait]               # messages from outbox.jsonl (no agent-deck)
+python3 deck.py <session_dir> inbox [--wait]               # the user's messages, for the session that started the deck
 python3 deck.py <session_dir> check                        # what still blocks Done; exit 1 when something does
 python3 deck.py <session_dir> export [--out ledger.md] [--force]   # numbered decision ledger (refuses while check fails)
 python3 deck.py <session_dir> clean-probes                 # delete dependency folders under probes/, list worktrees
@@ -18,8 +18,10 @@ python3 deck.py <session_dir> lessons                      # review points earli
 python3 deck.py <session_dir> stop                         # stop serve.py and free Whisper; state.json stays
 """
 
+import atexit
 import json
 import os
+import signal
 import shutil
 import sys
 import time
@@ -30,7 +32,7 @@ import urllib.request
 def call(root, path, body=None):
     info = os.path.join(root, "server.json")
     if not os.path.exists(info):
-        raise SystemExit(f"no server for {root}: start serve.py first")
+        raise SystemExit(f"no server for {root}: start deck-server first")
     port = json.load(open(info))["port"]
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(
@@ -42,7 +44,7 @@ def call(root, path, body=None):
     except urllib.error.HTTPError as exc:
         raise SystemExit(f"{path}: {json.load(exc).get('error', exc)}")
     except urllib.error.URLError as exc:
-        raise SystemExit(f"server on port {port} does not answer ({exc.reason}): start serve.py again")
+        raise SystemExit(f"server on port {port} does not answer ({exc.reason}): start deck-server again")
 
 
 def flags(args):
@@ -217,7 +219,7 @@ def outcome(root, qid, opt):
     try:
         print(f"{call(root, '/api/outcome', body)['count']} outcomes recorded")
     except SystemExit as exc:
-        if "start serve.py" not in str(exc):
+        if "start deck-server" not in str(exc):
             raise
         # the grill is long over: with no server, this command is the only writer
         s = load(root)
@@ -253,20 +255,38 @@ def lessons(root):
             print(f"  - {n}")
 
 
+def write_listener(root, state):
+    """listener.json tells the server that the session listens, so the page shows it as attached."""
+    tmp = os.path.join(root, ".listener.tmp")
+    with open(tmp, "w") as f:
+        json.dump({"pid": os.getpid() if state == "waiting" else None, "state": state, "at": time.time()}, f)
+    os.replace(tmp, os.path.join(root, "listener.json"))
+
+
 def inbox(root, wait=False):
     """Print the outbox messages not read yet. Without agent-deck the server writes the user's input to
-    outbox.jsonl; run `inbox --wait` in the background so the session wakes when the user sends something."""
+    outbox.jsonl; the session that started the deck runs `inbox --wait` in the background, which exits with the
+    message and so wakes that session. Start it again after each message."""
     path, mark = os.path.join(root, "outbox.jsonl"), os.path.join(root, "outbox.read")
     seen = int(open(mark).read() or 0) if os.path.exists(mark) else 0
+    got = []
+    if wait:
+        write_listener(root, "waiting")
+        atexit.register(lambda: None if got else write_listener(root, "stopped"))
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     while True:
         lines = open(path, encoding="utf-8").read().splitlines() if os.path.exists(path) else []
         if len(lines) > seen or not wait:
             break
         time.sleep(1)
-    for line in lines[seen:]:
+    got = lines[seen:]
+    for line in got:
         print(json.loads(line)["message"], end="\n\n")
     with open(mark, "w") as f:
         f.write(str(len(lines)))
+    if wait and got:
+        print("(start `inbox --wait` in the background again after you act on this)")
+        write_listener(root, "delivered")
 
 
 def main():
@@ -339,7 +359,7 @@ def main():
             print("no server running")
         else:
             call(root, "/api/stop", {})
-            print("server stopped; start serve.py with the same folder to reopen the tree")
+            print("server stopped; start deck-server with the same folder to reopen the tree")
     else:
         raise SystemExit(__doc__)
 

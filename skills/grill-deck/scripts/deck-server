@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Start the grill-deck server:  bash deck-server <session_dir> [--title "..."] [--session <id>] [--port 8790] [--no-open]
+# Voice runs local Whisper: mlx-whisper on Apple Silicon, faster-whisper on Linux and Intel Macs (stt-deps.sh).
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
+source "$here/stt-deps.sh"
+exec uv run -q --no-project --python 3.12 "${STT_DEPS[@]}" --with numpy --with soundfile \
+  python "$here/serve.py" "$@"

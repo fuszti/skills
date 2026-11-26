@@ -82,6 +82,9 @@ The feed is append-only (making-short-explainer-videos → "Follow-up requests")
 finish after the first publish, goes at the end with the next number. Never renumber, re-render or overwrite a
 part that is already in the feed. The user watches it while you work.
 
+Start the feed and its inbox from this session, and start the inbox again after each request
+(making-short-explainer-videos → "Follow-up requests"). The inbox's exit is how the viewer's questions reach you.
+
 Do not publish the claude.ai Artifact again after each follow-up. A publish opens that page and takes the focus
 away from the local feed. `--site` is enough for the local feed. Publish the new parts in one batch only when the
 user asks, or after the user says the watching session is finished.

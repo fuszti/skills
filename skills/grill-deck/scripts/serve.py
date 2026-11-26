@@ -1,17 +1,21 @@
 """grill-deck server: the local web app for a grill-deck session.
 
-    uv run -q --no-project --python 3.12 --with mlx-whisper --with numpy --with soundfile \\
-        python serve.py <session_dir> [--title "..."] [--session <agent-deck id>] [--port 8790] [--no-open]
+    bash deck-server <session_dir> [--title "..."] [--session <agent-deck id>] [--port 8790] [--no-open]
+
+deck-server runs this file under uv with the Whisper backend for the platform (stt-deps.sh).
 
 It is the only writer of <session_dir>/state.json. Claude and its background agents change the state through
 deck.py (HTTP on 127.0.0.1); the page reads /api/state every second.
 
 Voice: the page cuts the mic stream into utterances (browser VAD) and posts 16 kHz WAV to /api/utterance. Whisper
-(mlx, local, language detected per utterance) writes the text; a Haiku judge (`claude -p`, no tools, no context)
-decides whether the user finished a thought. If so, the answers and the talk go to the session after a short undo
-window, with `agent-deck session send --no-wait` (Claude Code queues a message that arrives mid-turn).
+(local, language detected per utterance; stt.py: mlx on Apple Silicon, faster-whisper elsewhere) writes the text;
+a Haiku judge (`claude -p`, no tools, no context) decides whether the user finished a thought. If so, the answers
+and the talk go to the session after a short undo window, with `agent-deck session send --no-wait` (Claude Code
+queues a message that arrives mid-turn).
 
---session defaults to $AGENTDECK_INSTANCE_ID. Without one, messages go to <session_dir>/outbox.jsonl.
+Messages reach the Claude Code session that started the deck: without agent-deck they go to
+<session_dir>/outbox.jsonl, and that session's `deck.py <session_dir> inbox --wait` (in the background) exits with
+them, which wakes the session. --session (default $AGENTDECK_INSTANCE_ID) sends them with agent-deck instead.
 Settings: ~/.config/grill-deck/config.json (or $GRILL_DECK_CONFIG); see the skill's SKILL.md, "Configuration".
 """
 
@@ -29,6 +33,8 @@ import webbrowser
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlparse
+
+import stt
 
 SKILL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.join(SKILL, "app")
@@ -263,7 +269,13 @@ class Deck:
             now = time.time()
             self.s["requests"] = [r for r in self.s["requests"] if r["state"] != "done" and now - r["at"] < 1200]
             out = copy.deepcopy(self.s)
-        out["server"] = {"session": bool(self.session), "countdown": self.cfg["send_countdown"], "now": time.time()}
+        attached = bool(self.session)
+        if not self.session:
+            # without agent-deck the listener tells: waiting = the session waits for you, delivered = it works
+            listener = self.listener_state()
+            out["claude"] = "working" if listener == "delivered" else "waiting"
+            attached = bool(listener)
+        out["server"] = {"session": attached, "countdown": self.cfg["send_countdown"], "now": time.time()}
         out["guard"] = {
             "streak": rec_streak(out["answers"], self.cfg["streak_gap_seconds"]),
             "limit": self.cfg["streak_guard"],
@@ -567,7 +579,7 @@ class Deck:
                 self.s["pending"] = {
                     "state": done_state if ok else "failed",
                     "at": time.time(),
-                    "note": "" if self.session else "queued in outbox.jsonl",
+                    "note": "" if self.session or self.listening() else "queued in outbox.jsonl",
                 }
                 self.save()
         return ok
@@ -624,6 +636,25 @@ class Deck:
             self.save()
             return {"count": len(self.s["outcomes"])}
 
+    def listener_state(self, grace=1800):
+        """"waiting" while the session's `deck.py inbox --wait` runs, "delivered" within `grace` s after it exited
+        with a message (the session works on it), else ""."""
+        try:
+            info = json.load(open(os.path.join(self.root, "listener.json")))
+        except (OSError, ValueError):
+            return ""
+        if info.get("state") == "waiting":
+            try:
+                os.kill(int(info["pid"]), 0)
+                return "waiting"
+            except (OSError, TypeError, ValueError):
+                return ""
+        fresh = info.get("state") == "delivered" and time.time() - info.get("at", 0) < grace
+        return "delivered" if fresh else ""
+
+    def listening(self):
+        return bool(self.listener_state())
+
     def session_status(self):
         """agent-deck says `running` while the session works and `waiting`/`idle` while it waits for the user."""
         r = subprocess.run(
@@ -668,7 +699,7 @@ class Deck:
 
 
     def stop(self, reason):
-        print(f"stopping: {reason}. The tree stays in state.json; serve.py with the same folder reopens it.", flush=True)
+        print(f"stopping: {reason}. The tree stays in state.json; deck-server with the same folder reopens it.", flush=True)
         # shutdown() waits for serve_forever, so it cannot run on a request thread
         threading.Thread(target=self.server.shutdown, daemon=True).start()
         return {"stopped": True}
@@ -751,7 +782,6 @@ def judge(model, system, lines, cards, cwd):
 
 def transcribe(model, wav_bytes, wait=True, hallucinations=frozenset()):
     """wait=False is for the live preview: it gives up at once when a final transcription holds the model."""
-    import mlx_whisper
     import numpy as np
     import soundfile as sf
 
@@ -765,7 +795,7 @@ def transcribe(model, wav_bytes, wait=True, hallucinations=frozenset()):
     if not _whisper_lock.acquire(blocking=wait):
         return "", seconds
     try:
-        out = mlx_whisper.transcribe(audio, path_or_hf_repo=model, condition_on_previous_text=False)
+        out = stt.transcribe(audio, model, condition_on_previous_text=False)
     finally:
         _whisper_lock.release()
     segs = [
@@ -879,7 +909,7 @@ def warmup(model):
     sf.write(buf, np.zeros(16000, np.float32), 16000, format="WAV")
     try:
         transcribe(model, buf.getvalue())
-        print("whisper ready", flush=True)
+        print(f"whisper ready: {stt.describe()}", flush=True)
     except Exception as exc:
         print(f"whisper warmup failed: {exc}", flush=True)
 
@@ -910,7 +940,8 @@ def main():
     with open(info, "w") as f:
         json.dump({"port": candidate, "pid": os.getpid()}, f)
     url = f"http://localhost:{candidate}/"
-    print(f"deck: {url}  session: {session or '(none: messages go to outbox.jsonl)'}", flush=True)
+    how = f"agent-deck {session}" if session else "outbox.jsonl; run `deck.py <dir> inbox --wait` in the background"
+    print(f"deck: {url}  delivery: {how}", flush=True)
     threading.Thread(target=warmup, args=(cfg["whisper_model"],), daemon=True).start()
     threading.Thread(target=deck.poll_session, daemon=True).start()
     threading.Thread(target=deck.watchdog, daemon=True).start()

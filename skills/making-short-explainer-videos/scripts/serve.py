@@ -3,12 +3,14 @@
     bash scripts/explainer-feed <project_dir> [--session <agent-deck id>] [--port 8765] [--no-open]
 
 The page records while the viewer has paused the video by hand, and posts the audio (or typed text) to /ask when they
-press play. This server saves it under <project_dir>/requests/, writes the text with a local Whisper model (no audio
-leaves the machine), and sends the request to the session with `agent-deck session send --defer-if-busy`. The session
-renders follow-up parts and runs `build.py --site`; the page reads parts.json again every few seconds.
+press play. This server saves it under <project_dir>/requests/ and writes the text with a local Whisper model (stt.py:
+mlx-whisper on Apple Silicon, faster-whisper elsewhere; no audio leaves the machine). The session renders follow-up
+parts and runs `build.py --site`; the page reads parts.json again every few seconds.
 
---session defaults to $AGENTDECK_INSTANCE_ID (the session that started this server). Without one, requests stay
-queued in requests/ with status "queued" for the next session to pick up.
+The request reaches the Claude Code session that started this server through inbox.py: that session runs
+`inbox.py <project_dir> --wait` in the background, which exits with the request and so wakes the session.
+With --session (default $AGENTDECK_INSTANCE_ID) the server sends it with `agent-deck session send --defer-if-busy`
+instead. With neither, requests stay in requests/ with status "queued".
 """
 
 import json
@@ -25,17 +27,32 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import imageio_ffmpeg
 import numpy as np
 import soundfile as sf
+import stt
 
 WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 MIN_SECONDS = 1.0
 _LOCK = threading.Lock()  # one transcription at a time: the model is loaded once and is not thread-safe
+DELIVERED_GRACE = 1800  # inbox.py exits on a delivery; the session counts as attached while it answers
+
+
+def listening(reqs):
+    """True while the session's inbox.py waits (its pid lives), or shortly after it delivered a request."""
+    try:
+        info = json.load(open(os.path.join(reqs, "listener.json")))
+    except (OSError, ValueError):
+        return False
+    if info.get("state") == "waiting":
+        try:
+            os.kill(int(info["pid"]), 0)
+            return True
+        except (OSError, TypeError, ValueError):
+            return False
+    return info.get("state") == "delivered" and time.time() - info.get("at", 0) < DELIVERED_GRACE
 
 
 def transcribe(path):
     """Decode any browser audio (webm/opus, mp4, wav) to 16 kHz mono with ffmpeg, then run Whisper on the array."""
-    import mlx_whisper
-
     raw = subprocess.run(
         [
             imageio_ffmpeg.get_ffmpeg_exe(),
@@ -58,7 +75,7 @@ def transcribe(path):
     if len(audio) < MIN_SECONDS * 16000:
         return ""
     with _LOCK:
-        out = mlx_whisper.transcribe(audio, path_or_hf_repo=WHISPER_MODEL, language="en")
+        out = stt.transcribe(audio, WHISPER_MODEL, language="en")
     return out.get("text", "").strip()
 
 
@@ -104,11 +121,11 @@ def make_handler(project, session):
 
         def do_GET(self):
             if self.path == "/local.json":
-                return self.reply(HTTPStatus.OK, {"local": True, "session": bool(session)})
+                return self.reply(HTTPStatus.OK, {"local": True, "session": bool(session) or listening(reqs)})
             if self.path == "/requests.json":
                 items = []
                 for f in sorted(os.listdir(reqs)):
-                    if f.endswith(".json"):
+                    if f.endswith(".json") and f != "listener.json":
                         items.append(json.load(open(os.path.join(reqs, f))))
                 return self.reply(HTTPStatus.OK, {"requests": items})
             return super().do_GET()
@@ -156,7 +173,8 @@ def make_handler(project, session):
             json.dump(req, open(path, "w"), indent=1)
             if session:
                 threading.Thread(target=notify, args=(session, project, dict(req), path), daemon=True).start()
-            return self.reply(HTTPStatus.OK, {"id": rid, "status": req["status"], "text": req["text"]})
+            shown = "sent" if session or listening(reqs) else "queued"  # inbox.py picks up a queued one within 1 s
+            return self.reply(HTTPStatus.OK, {"id": rid, "status": shown, "text": req["text"]})
 
     return Handler
 
@@ -181,7 +199,8 @@ def main():
     else:
         raise SystemExit(f"no free port in {port}-{port + 19}")
     url = f"http://localhost:{candidate}/"
-    print(f"feed: {url}  session: {session or '(none: requests stay queued)'}", flush=True)
+    how = f"agent-deck {session}" if session else f"inbox.py {project} --wait (start it in the background)"
+    print(f"feed: {url}  delivery: {how}", flush=True)
     threading.Thread(target=lambda: transcribe_warmup(), daemon=True).start()
     if "--no-open" not in args:
         webbrowser.open(url)
@@ -194,7 +213,7 @@ def transcribe_warmup():
         with tempfile.NamedTemporaryFile(suffix=".wav") as f:
             sf.write(f.name, np.zeros(16000 * 2, np.float32), 16000)
             transcribe(f.name)
-        print("whisper ready", flush=True)
+        print(f"whisper ready: {stt.describe()}", flush=True)
     except Exception as exc:
         print(f"whisper warmup failed: {exc}", flush=True)
 
